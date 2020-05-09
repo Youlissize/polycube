@@ -33,6 +33,9 @@
 // To get the right path
 #include "fullpath.h"
 
+// eigen
+#include "extern/eigen3/Eigen/Sparse"
+
 
 class MyViewer : public QGLViewer , public QOpenGLFunctions_3_0
 {
@@ -58,6 +61,7 @@ public :
         DetailedAction * saveCamera = new DetailedAction( QIcon(fullpath+"/icons/camera.png") , "Save camera" , "Save camera" , this , this , SLOT(saveCamera()) );
         DetailedAction * openCamera = new DetailedAction( QIcon(fullpath+"/icons/open_camera.png") , "Open camera" , "Open camera" , this , this , SLOT(openCamera()) );
         DetailedAction * saveSnapShotPlusPlus = new DetailedAction( QIcon(fullpath+"/icons/save_snapshot.png") , "Save snapshot" , "Save snapshot" , this , this , SLOT(saveSnapShotPlusPlus()) );
+        DetailedAction * work = new DetailedAction( QIcon(fullpath+"/icons/work.png") , "Work" , "Work" , this , this , SLOT(work()) );
 
         // Add them :
         toolBar->addAction( open_mesh );
@@ -66,6 +70,7 @@ public :
         toolBar->addAction( saveCamera );
         toolBar->addAction( openCamera );
         toolBar->addAction( saveSnapShotPlusPlus );
+        toolBar->addAction( work );
     }
 
 
@@ -319,6 +324,120 @@ public slots:
             setSnapshotQuality(100);
             saveSnapshot( fileName );
             saveCameraInFile( fileName+QString(".cam") );
+        }
+    }
+
+    void work(){
+        Eigen::VectorXd gradient(3*mesh.vertices.size());
+
+        Eigen::VectorXd pb(3*mesh.vertices.size());
+        for( unsigned int t = 0 ; t < mesh.vertices.size() ; ++t ) {
+            point3d const & p = mesh.vertices[ t ].p;
+            pb(3*t) = p[0];
+            pb(3*t+1) = p[1];
+            pb(3*t+2) = p[2];
+        }
+
+        typedef Eigen::Triplet<double> T;
+        std::vector<T> tripletList;
+        tripletList.reserve(12);
+        Eigen::SparseMatrix<double> A(3*mesh.vertices.size(), 3*mesh.vertices.size());
+        for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
+          int i = mesh.triangles[t][0];
+          int j = mesh.triangles[t][1];
+
+          tripletList.clear();
+          tripletList.push_back(T(3*i, 3*i, 1));
+          tripletList.push_back(T(3*i+1, 3*i+1, 1));
+          tripletList.push_back(T(3*i+2, 3*i+2, 1));
+
+          tripletList.push_back(T(3*j, 3*j, 1));
+          tripletList.push_back(T(3*j+1, 3*j+1, 1));
+          tripletList.push_back(T(3*j+2, 3*j+2, 1));
+
+          tripletList.push_back(T(3*i, 3*j, -1));
+          tripletList.push_back(T(3*i+1, 3*j+1, -1));
+          tripletList.push_back(T(3*i+2, 3*j+2, -1));
+
+          tripletList.push_back(T(3*j, 3*i, -1));
+          tripletList.push_back(T(3*j+1, 3*i+1, -1));
+          tripletList.push_back(T(3*j+2, 3*i+2, -1));
+
+          A.setFromTriplets(tripletList.begin(), tripletList.end());
+          Eigen::VectorXd b(3*mesh.vertices.size());
+          point3d & pi = mesh.vertices[ i ].p;
+          point3d & pj = mesh.vertices[ j ].p;
+          b(3*i)   = pi[0]-pj[0];
+          b(3*i+1) = pi[1]-pj[1];
+          b(3*i+2) = pi[2]-pj[2];
+          b(3*j)   = pj[0]-pi[0];
+          b(3*j+1) = pj[1]-pi[1];
+          b(3*j+2) = pj[2]-pi[2];
+          gradient += 2*A*pb - 2*b;
+
+          i = mesh.triangles[t][0];
+          j = mesh.triangles[t][2];
+
+          tripletList.clear();
+          tripletList.push_back(T(3*i, 3*i, 1));
+          tripletList.push_back(T(3*i+1, 3*i+1, 1));
+          tripletList.push_back(T(3*i+2, 3*i+2, 1));
+
+          tripletList.push_back(T(3*j, 3*j, 1));
+          tripletList.push_back(T(3*j+1, 3*j+1, 1));
+          tripletList.push_back(T(3*j+2, 3*j+2, 1));
+
+          tripletList.push_back(T(3*i, 3*j, -1));
+          tripletList.push_back(T(3*i+1, 3*j+1, -1));
+          tripletList.push_back(T(3*i+2, 3*j+2, -1));
+
+          tripletList.push_back(T(3*j, 3*i, -1));
+          tripletList.push_back(T(3*j+1, 3*i+1, -1));
+          tripletList.push_back(T(3*j+2, 3*i+2, -1));
+
+          A.setFromTriplets(tripletList.begin(), tripletList.end());
+          b = Eigen::VectorXd(3*mesh.vertices.size());
+          pi = mesh.vertices[ i ].p;
+          pj = mesh.vertices[ j ].p;
+          b(3*i)   = pi[0]-pj[0];
+          b(3*i+1) = pi[1]-pj[1];
+          b(3*i+2) = pi[2]-pj[2];
+          b(3*j)   = pj[0]-pi[0];
+          b(3*j+1) = pj[1]-pi[1];
+          b(3*j+2) = pj[2]-pi[2];
+          gradient += 2*A*pb - 2*b;
+
+          i = mesh.triangles[t][1];
+          j = mesh.triangles[t][2];
+
+          tripletList.clear();
+          tripletList.push_back(T(3*i, 3*i, 1));
+          tripletList.push_back(T(3*i+1, 3*i+1, 1));
+          tripletList.push_back(T(3*i+2, 3*i+2, 1));
+
+          tripletList.push_back(T(3*j, 3*j, 1));
+          tripletList.push_back(T(3*j+1, 3*j+1, 1));
+          tripletList.push_back(T(3*j+2, 3*j+2, 1));
+
+          tripletList.push_back(T(3*i, 3*j, -1));
+          tripletList.push_back(T(3*i+1, 3*j+1, -1));
+          tripletList.push_back(T(3*i+2, 3*j+2, -1));
+
+          tripletList.push_back(T(3*j, 3*i, -1));
+          tripletList.push_back(T(3*j+1, 3*i+1, -1));
+          tripletList.push_back(T(3*j+2, 3*i+2, -1));
+
+          A.setFromTriplets(tripletList.begin(), tripletList.end());
+          b = Eigen::VectorXd(3*mesh.vertices.size());
+          pi = mesh.vertices[ i ].p;
+          pj = mesh.vertices[ j ].p;
+          b(3*i)   = pi[0]-pj[0];
+          b(3*i+1) = pi[1]-pj[1];
+          b(3*i+2) = pi[2]-pj[2];
+          b(3*j)   = pj[0]-pi[0];
+          b(3*j+1) = pj[1]-pi[1];
+          b(3*j+2) = pj[2]-pi[2];
+          gradient += 2*A*pb - 2*b;
         }
     }
 };
