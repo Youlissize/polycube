@@ -342,9 +342,18 @@ public slots:
         std::vector<T> tripletList;
         tripletList.reserve(12);
         Eigen::SparseMatrix<double> A(3*mesh.vertices.size(), 3*mesh.vertices.size());
+        Eigen::SparseMatrix<double> Atemp(3*mesh.vertices.size(), 3*mesh.vertices.size());
+        Eigen::VectorXd b(3*mesh.vertices.size());
+        int lastpercent = -1;
         for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
           int i = mesh.triangles[t][0];
           int j = mesh.triangles[t][1];
+
+          int percent = t * 100 / mesh.triangles.size();
+          if(percent > lastpercent) {
+              std::cout << percent << "%" << std::endl;
+              lastpercent = percent;
+          }
 
           tripletList.clear();
           tripletList.push_back(T(3*i, 3*i, 1));
@@ -363,17 +372,16 @@ public slots:
           tripletList.push_back(T(3*j+1, 3*i+1, -1));
           tripletList.push_back(T(3*j+2, 3*i+2, -1));
 
-          A.setFromTriplets(tripletList.begin(), tripletList.end());
-          Eigen::VectorXd b(3*mesh.vertices.size());
-          point3d & pi = mesh.vertices[ i ].p;
-          point3d & pj = mesh.vertices[ j ].p;
-          b(3*i)   = pi[0]-pj[0];
-          b(3*i+1) = pi[1]-pj[1];
-          b(3*i+2) = pi[2]-pj[2];
-          b(3*j)   = pj[0]-pi[0];
-          b(3*j+1) = pj[1]-pi[1];
-          b(3*j+2) = pj[2]-pi[2];
-          gradient += 2*A*pb - 2*b;
+          Atemp.setFromTriplets(tripletList.begin(), tripletList.end());
+          point3d pi = mesh.vertices[ i ].p;
+          point3d pj = mesh.vertices[ j ].p;
+          b(3*i)   += pi[0]-pj[0];
+          b(3*i+1) += pi[1]-pj[1];
+          b(3*i+2) += pi[2]-pj[2];
+          b(3*j)   += pj[0]-pi[0];
+          b(3*j+1) += pj[1]-pi[1];
+          b(3*j+2) += pj[2]-pi[2];
+          A = A + Atemp;
 
           i = mesh.triangles[t][0];
           j = mesh.triangles[t][2];
@@ -395,17 +403,16 @@ public slots:
           tripletList.push_back(T(3*j+1, 3*i+1, -1));
           tripletList.push_back(T(3*j+2, 3*i+2, -1));
 
-          A.setFromTriplets(tripletList.begin(), tripletList.end());
-          b = Eigen::VectorXd(3*mesh.vertices.size());
+          Atemp.setFromTriplets(tripletList.begin(), tripletList.end());
           pi = mesh.vertices[ i ].p;
           pj = mesh.vertices[ j ].p;
-          b(3*i)   = pi[0]-pj[0];
-          b(3*i+1) = pi[1]-pj[1];
-          b(3*i+2) = pi[2]-pj[2];
-          b(3*j)   = pj[0]-pi[0];
-          b(3*j+1) = pj[1]-pi[1];
-          b(3*j+2) = pj[2]-pi[2];
-          gradient += 2*A*pb - 2*b;
+          b(3*i)   += pi[0]-pj[0];
+          b(3*i+1) += pi[1]-pj[1];
+          b(3*i+2) += pi[2]-pj[2];
+          b(3*j)   += pj[0]-pi[0];
+          b(3*j+1) += pj[1]-pi[1];
+          b(3*j+2) += pj[2]-pi[2];
+          A = A + Atemp;
 
           i = mesh.triangles[t][1];
           j = mesh.triangles[t][2];
@@ -427,22 +434,19 @@ public slots:
           tripletList.push_back(T(3*j+1, 3*i+1, -1));
           tripletList.push_back(T(3*j+2, 3*i+2, -1));
 
-          A.setFromTriplets(tripletList.begin(), tripletList.end());
-          b = Eigen::VectorXd(3*mesh.vertices.size());
+          Atemp.setFromTriplets(tripletList.begin(), tripletList.end());
           pi = mesh.vertices[ i ].p;
           pj = mesh.vertices[ j ].p;
-          b(3*i)   = pi[0]-pj[0];
-          b(3*i+1) = pi[1]-pj[1];
-          b(3*i+2) = pi[2]-pj[2];
-          b(3*j)   = pj[0]-pi[0];
-          b(3*j+1) = pj[1]-pi[1];
-          b(3*j+2) = pj[2]-pi[2];
-          gradient += 2*A*pb - 2*b;
+          b(3*i)   += pi[0]-pj[0];
+          b(3*i+1) += pi[1]-pj[1];
+          b(3*i+2) += pi[2]-pj[2];
+          b(3*j)   += pj[0]-pi[0];
+          b(3*j+1) += pj[1]-pi[1];
+          b(3*j+2) += pj[2]-pi[2];
+          A = A + Atemp;
         }
+        gradient = 2*A*pb - 2*b;
     }
 };
-
-
-
 
 #endif // MYVIEWER_H
