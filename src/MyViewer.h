@@ -36,6 +36,47 @@
 // eigen
 #include "extern/eigen3/Eigen/Sparse"
 
+class MySparseMatrix {
+    std::vector< std::map< unsigned int , double > > _ASparse;
+
+    unsigned int _rows , _columns;
+
+public:
+    MySparseMatrix() {
+        _rows = _columns = 0;
+    }
+    MySparseMatrix( int rows , int columns ) {
+        setDimensions(rows , columns);
+    }
+    ~MySparseMatrix() {
+    }
+
+    void setDimensions( int rows , int columns ) {
+        _rows = rows; _columns = columns;
+        _ASparse.clear();
+        _ASparse.resize(_rows);
+    }
+
+    double & operator() (unsigned int row , unsigned int column) {
+        return _ASparse[row][column];
+    }
+
+    void convertToEigenFormat(Eigen::SparseMatrix<double> & _A) {
+        // convert ad-hoc matrix to Eigen sparse format:
+        {
+            _A.resize(_rows , _columns);
+            std::vector< Eigen::Triplet< double > > triplets;
+            for( unsigned int r = 0 ; r < _rows ; ++r ) {
+                for( std::map< unsigned int , double >::const_iterator it = _ASparse[r].begin() ; it != _ASparse[r].end() ; ++it ) {
+                    unsigned int c = it->first;
+                    double val = it->second;
+                    triplets.push_back( Eigen::Triplet< double >(r,c,val) );
+                }
+            }
+            _A.setFromTriplets( triplets.begin() , triplets.end() );
+        }
+    }
+};
 
 class MyViewer : public QGLViewer , public QOpenGLFunctions_3_0
 {
@@ -345,37 +386,29 @@ public slots:
         std::vector<T> tripletList;
         tripletList.reserve(12);
         Eigen::SparseMatrix<double> A(3*mesh.vertices.size(), 3*mesh.vertices.size());
-        Eigen::SparseMatrix<double> Atemp(3*mesh.vertices.size(), 3*mesh.vertices.size());
+        MySparseMatrix A_mine( 3*mesh.vertices.size() , 3*mesh.vertices.size() );
         Eigen::VectorXd b(3*mesh.vertices.size());
-        int lastpercent = -1;
+
         for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
           int i = mesh.triangles[t][0];
           int j = mesh.triangles[t][1];
 
-          int percent = t * 100 / mesh.triangles.size();
-          if(percent > lastpercent) {
-              std::cout << percent << "%" << std::endl;
-              lastpercent = percent;
-          }
+          A_mine(3*i, 3*i) += 1;
+          A_mine(3*i+1, 3*i+1) += 1;
+          A_mine(3*i+2, 3*i+2) += 1;
 
-          tripletList.clear();
-          tripletList.push_back(T(3*i, 3*i, 1));
-          tripletList.push_back(T(3*i+1, 3*i+1, 1));
-          tripletList.push_back(T(3*i+2, 3*i+2, 1));
+          A_mine(3*j, 3*j) += 1;
+          A_mine(3*j+1, 3*j+1) += 1;
+          A_mine(3*j+2, 3*j+2) += 1;
 
-          tripletList.push_back(T(3*j, 3*j, 1));
-          tripletList.push_back(T(3*j+1, 3*j+1, 1));
-          tripletList.push_back(T(3*j+2, 3*j+2, 1));
+          A_mine(3*i, 3*j) += -1;
+          A_mine(3*i+1, 3*j+1) += -1;
+          A_mine(3*i+2, 3*j+2) += -1;
 
-          tripletList.push_back(T(3*i, 3*j, -1));
-          tripletList.push_back(T(3*i+1, 3*j+1, -1));
-          tripletList.push_back(T(3*i+2, 3*j+2, -1));
+          A_mine(3*j, 3*i) += -1;
+          A_mine(3*j+1, 3*i+1) += -1;
+          A_mine(3*j+2, 3*i+2) += -1;
 
-          tripletList.push_back(T(3*j, 3*i, -1));
-          tripletList.push_back(T(3*j+1, 3*i+1, -1));
-          tripletList.push_back(T(3*j+2, 3*i+2, -1));
-
-          Atemp.setFromTriplets(tripletList.begin(), tripletList.end());
           point3d pi = mesh.vertices[ i ].p;
           point3d pj = mesh.vertices[ j ].p;
           b(3*i)   += pi[0]-pj[0];
@@ -384,29 +417,26 @@ public slots:
           b(3*j)   += pj[0]-pi[0];
           b(3*j+1) += pj[1]-pi[1];
           b(3*j+2) += pj[2]-pi[2];
-          A = A + Atemp;
 
           i = mesh.triangles[t][0];
           j = mesh.triangles[t][2];
 
-          tripletList.clear();
-          tripletList.push_back(T(3*i, 3*i, 1));
-          tripletList.push_back(T(3*i+1, 3*i+1, 1));
-          tripletList.push_back(T(3*i+2, 3*i+2, 1));
+          A_mine(3*i, 3*i) += 1;
+          A_mine(3*i+1, 3*i+1) += 1;
+          A_mine(3*i+2, 3*i+2) += 1;
 
-          tripletList.push_back(T(3*j, 3*j, 1));
-          tripletList.push_back(T(3*j+1, 3*j+1, 1));
-          tripletList.push_back(T(3*j+2, 3*j+2, 1));
+          A_mine(3*j, 3*j) += 1;
+          A_mine(3*j+1, 3*j+1) += 1;
+          A_mine(3*j+2, 3*j+2) += 1;
 
-          tripletList.push_back(T(3*i, 3*j, -1));
-          tripletList.push_back(T(3*i+1, 3*j+1, -1));
-          tripletList.push_back(T(3*i+2, 3*j+2, -1));
+          A_mine(3*i, 3*j) += -1;
+          A_mine(3*i+1, 3*j+1) += -1;
+          A_mine(3*i+2, 3*j+2) += -1;
 
-          tripletList.push_back(T(3*j, 3*i, -1));
-          tripletList.push_back(T(3*j+1, 3*i+1, -1));
-          tripletList.push_back(T(3*j+2, 3*i+2, -1));
+          A_mine(3*j, 3*i) += -1;
+          A_mine(3*j+1, 3*i+1) += -1;
+          A_mine(3*j+2, 3*i+2) += -1;
 
-          Atemp.setFromTriplets(tripletList.begin(), tripletList.end());
           pi = mesh.vertices[ i ].p;
           pj = mesh.vertices[ j ].p;
           b(3*i)   += pi[0]-pj[0];
@@ -415,29 +445,26 @@ public slots:
           b(3*j)   += pj[0]-pi[0];
           b(3*j+1) += pj[1]-pi[1];
           b(3*j+2) += pj[2]-pi[2];
-          A = A + Atemp;
 
           i = mesh.triangles[t][1];
           j = mesh.triangles[t][2];
 
-          tripletList.clear();
-          tripletList.push_back(T(3*i, 3*i, 1));
-          tripletList.push_back(T(3*i+1, 3*i+1, 1));
-          tripletList.push_back(T(3*i+2, 3*i+2, 1));
+          A_mine(3*i, 3*i) += 1;
+          A_mine(3*i+1, 3*i+1) += 1;
+          A_mine(3*i+2, 3*i+2) += 1;
 
-          tripletList.push_back(T(3*j, 3*j, 1));
-          tripletList.push_back(T(3*j+1, 3*j+1, 1));
-          tripletList.push_back(T(3*j+2, 3*j+2, 1));
+          A_mine(3*j, 3*j) += 1;
+          A_mine(3*j+1, 3*j+1) += 1;
+          A_mine(3*j+2, 3*j+2) += 1;
 
-          tripletList.push_back(T(3*i, 3*j, -1));
-          tripletList.push_back(T(3*i+1, 3*j+1, -1));
-          tripletList.push_back(T(3*i+2, 3*j+2, -1));
+          A_mine(3*i, 3*j) += -1;
+          A_mine(3*i+1, 3*j+1) += -1;
+          A_mine(3*i+2, 3*j+2) += -1;
 
-          tripletList.push_back(T(3*j, 3*i, -1));
-          tripletList.push_back(T(3*j+1, 3*i+1, -1));
-          tripletList.push_back(T(3*j+2, 3*i+2, -1));
+          A_mine(3*j, 3*i) += -1;
+          A_mine(3*j+1, 3*i+1) += -1;
+          A_mine(3*j+2, 3*i+2) += -1;
 
-          Atemp.setFromTriplets(tripletList.begin(), tripletList.end());
           pi = mesh.vertices[ i ].p;
           pj = mesh.vertices[ j ].p;
           b(3*i)   += pi[0]-pj[0];
@@ -446,8 +473,8 @@ public slots:
           b(3*j)   += pj[0]-pi[0];
           b(3*j+1) += pj[1]-pi[1];
           b(3*j+2) += pj[2]-pi[2];
-          A = A + Atemp;
         }
+        A_mine.convertToEigenFormat(A);
         gradient = 2*A*pb - 2*b;
 
         for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
