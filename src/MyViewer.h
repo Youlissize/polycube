@@ -388,92 +388,37 @@ public slots:
         Eigen::SparseMatrix<double> A(3*mesh.vertices.size(), 3*mesh.vertices.size());
         MySparseMatrix A_mine( 3*mesh.vertices.size() , 3*mesh.vertices.size() );
         Eigen::VectorXd b(3*mesh.vertices.size());
+        for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
+            for(unsigned int i = 0; i < mesh.tetras[t].size(); ++i) {
+                for(unsigned int j = i+1; j < mesh.tetras[t].size(); ++j) {
+                    A_mine(3*i, 3*i) += 1;
+                    A_mine(3*i+1, 3*i+1) += 1;
+                    A_mine(3*i+2, 3*i+2) += 1;
 
-        for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
-          int i = mesh.triangles[t][0];
-          int j = mesh.triangles[t][1];
+                    A_mine(3*j, 3*j) += 1;
+                    A_mine(3*j+1, 3*j+1) += 1;
+                    A_mine(3*j+2, 3*j+2) += 1;
 
-          A_mine(3*i, 3*i) += 1;
-          A_mine(3*i+1, 3*i+1) += 1;
-          A_mine(3*i+2, 3*i+2) += 1;
+                    A_mine(3*i, 3*j) += -1;
+                    A_mine(3*i+1, 3*j+1) += -1;
+                    A_mine(3*i+2, 3*j+2) += -1;
 
-          A_mine(3*j, 3*j) += 1;
-          A_mine(3*j+1, 3*j+1) += 1;
-          A_mine(3*j+2, 3*j+2) += 1;
+                    A_mine(3*j, 3*i) += -1;
+                    A_mine(3*j+1, 3*i+1) += -1;
+                    A_mine(3*j+2, 3*i+2) += -1;
 
-          A_mine(3*i, 3*j) += -1;
-          A_mine(3*i+1, 3*j+1) += -1;
-          A_mine(3*i+2, 3*j+2) += -1;
-
-          A_mine(3*j, 3*i) += -1;
-          A_mine(3*j+1, 3*i+1) += -1;
-          A_mine(3*j+2, 3*i+2) += -1;
-
-          point3d pi = mesh.vertices[ i ].p;
-          point3d pj = mesh.vertices[ j ].p;
-          b(3*i)   += pi[0]-pj[0];
-          b(3*i+1) += pi[1]-pj[1];
-          b(3*i+2) += pi[2]-pj[2];
-          b(3*j)   += pj[0]-pi[0];
-          b(3*j+1) += pj[1]-pi[1];
-          b(3*j+2) += pj[2]-pi[2];
-
-          i = mesh.triangles[t][0];
-          j = mesh.triangles[t][2];
-
-          A_mine(3*i, 3*i) += 1;
-          A_mine(3*i+1, 3*i+1) += 1;
-          A_mine(3*i+2, 3*i+2) += 1;
-
-          A_mine(3*j, 3*j) += 1;
-          A_mine(3*j+1, 3*j+1) += 1;
-          A_mine(3*j+2, 3*j+2) += 1;
-
-          A_mine(3*i, 3*j) += -1;
-          A_mine(3*i+1, 3*j+1) += -1;
-          A_mine(3*i+2, 3*j+2) += -1;
-
-          A_mine(3*j, 3*i) += -1;
-          A_mine(3*j+1, 3*i+1) += -1;
-          A_mine(3*j+2, 3*i+2) += -1;
-
-          pi = mesh.vertices[ i ].p;
-          pj = mesh.vertices[ j ].p;
-          b(3*i)   += pi[0]-pj[0];
-          b(3*i+1) += pi[1]-pj[1];
-          b(3*i+2) += pi[2]-pj[2];
-          b(3*j)   += pj[0]-pi[0];
-          b(3*j+1) += pj[1]-pi[1];
-          b(3*j+2) += pj[2]-pi[2];
-
-          i = mesh.triangles[t][1];
-          j = mesh.triangles[t][2];
-
-          A_mine(3*i, 3*i) += 1;
-          A_mine(3*i+1, 3*i+1) += 1;
-          A_mine(3*i+2, 3*i+2) += 1;
-
-          A_mine(3*j, 3*j) += 1;
-          A_mine(3*j+1, 3*j+1) += 1;
-          A_mine(3*j+2, 3*j+2) += 1;
-
-          A_mine(3*i, 3*j) += -1;
-          A_mine(3*i+1, 3*j+1) += -1;
-          A_mine(3*i+2, 3*j+2) += -1;
-
-          A_mine(3*j, 3*i) += -1;
-          A_mine(3*j+1, 3*i+1) += -1;
-          A_mine(3*j+2, 3*i+2) += -1;
-
-          pi = mesh.vertices[ i ].p;
-          pj = mesh.vertices[ j ].p;
-          b(3*i)   += pi[0]-pj[0];
-          b(3*i+1) += pi[1]-pj[1];
-          b(3*i+2) += pi[2]-pj[2];
-          b(3*j)   += pj[0]-pi[0];
-          b(3*j+1) += pj[1]-pi[1];
-          b(3*j+2) += pj[2]-pi[2];
+                    point3d pi = mesh.vertices[ i ].p;
+                    point3d pj = mesh.vertices[ j ].p;
+                    b(3*i)   += pi[0]-pj[0];
+                    b(3*i+1) += pi[1]-pj[1];
+                    b(3*i+2) += pi[2]-pj[2];
+                    b(3*j)   += pj[0]-pi[0];
+                    b(3*j+1) += pj[1]-pi[1];
+                    b(3*j+2) += pj[2]-pi[2];
+                }
+            }
         }
+
         A_mine.convertToEigenFormat(A);
         gradient = 2*A*pb - 2*b;
 
