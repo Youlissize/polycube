@@ -389,8 +389,11 @@ public slots:
         MySparseMatrix A_mine( 3*mesh.vertices.size() , 3*mesh.vertices.size() );
         Eigen::VectorXd b(3*mesh.vertices.size());
         for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
-            for(unsigned int i = 0; i < mesh.tetras[t].size(); ++i) {
-                for(unsigned int j = i+1; j < mesh.tetras[t].size(); ++j) {
+            for(unsigned int it = 0; it < mesh.tetras[t].size(); ++it) {
+                for(unsigned int jt = it+1; jt < mesh.tetras[t].size(); ++jt) {
+                    int i = mesh.tetras[t][it];
+                    int j = mesh.tetras[t][jt];
+
                     A_mine(3*i, 3*i) += 1;
                     A_mine(3*i+1, 3*i+1) += 1;
                     A_mine(3*i+2, 3*i+2) += 1;
