@@ -382,9 +382,6 @@ public slots:
             pb(3*t+2) = p[2];
         }
 
-        typedef Eigen::Triplet<double> T;
-        std::vector<T> tripletList;
-        tripletList.reserve(12);
         Eigen::SparseMatrix<double> A(3*mesh.vertices.size(), 3*mesh.vertices.size());
         MySparseMatrix A_mine( 3*mesh.vertices.size() , 3*mesh.vertices.size() );
         Eigen::VectorXd b(3*mesh.vertices.size());
