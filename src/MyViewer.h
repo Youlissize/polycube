@@ -387,34 +387,36 @@ public slots:
         Eigen::VectorXd b(3*mesh.vertices.size());
         for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
             for(unsigned int it = 0; it < mesh.tetras[t].size(); ++it) {
-                for(unsigned int jt = it+1; jt < mesh.tetras[t].size(); ++jt) {
-                    int i = mesh.tetras[t][it];
-                    int j = mesh.tetras[t][jt];
+                for(unsigned int jt = 0; jt < mesh.tetras[t].size(); ++jt) {
+                    if(it != jt) {
+                        int i = mesh.tetras[t][it];
+                        int j = mesh.tetras[t][jt];
 
-                    A_mine(3*i, 3*i) += 1;
-                    A_mine(3*i+1, 3*i+1) += 1;
-                    A_mine(3*i+2, 3*i+2) += 1;
+                        A_mine(3*i, 3*i) += 1;
+                        A_mine(3*i+1, 3*i+1) += 1;
+                        A_mine(3*i+2, 3*i+2) += 1;
 
-                    A_mine(3*j, 3*j) += 1;
-                    A_mine(3*j+1, 3*j+1) += 1;
-                    A_mine(3*j+2, 3*j+2) += 1;
+                        A_mine(3*j, 3*j) += 1;
+                        A_mine(3*j+1, 3*j+1) += 1;
+                        A_mine(3*j+2, 3*j+2) += 1;
 
-                    A_mine(3*i, 3*j) += -1;
-                    A_mine(3*i+1, 3*j+1) += -1;
-                    A_mine(3*i+2, 3*j+2) += -1;
+                        A_mine(3*i, 3*j) += -1;
+                        A_mine(3*i+1, 3*j+1) += -1;
+                        A_mine(3*i+2, 3*j+2) += -1;
 
-                    A_mine(3*j, 3*i) += -1;
-                    A_mine(3*j+1, 3*i+1) += -1;
-                    A_mine(3*j+2, 3*i+2) += -1;
+                        A_mine(3*j, 3*i) += -1;
+                        A_mine(3*j+1, 3*i+1) += -1;
+                        A_mine(3*j+2, 3*i+2) += -1;
 
-                    point3d pi = mesh.vertices[ i ].p;
-                    point3d pj = mesh.vertices[ j ].p;
-                    b(3*i)   += pi[0]-pj[0];
-                    b(3*i+1) += pi[1]-pj[1];
-                    b(3*i+2) += pi[2]-pj[2];
-                    b(3*j)   += pj[0]-pi[0];
-                    b(3*j+1) += pj[1]-pi[1];
-                    b(3*j+2) += pj[2]-pi[2];
+                        point3d pi = mesh.vertices[ i ].p;
+                        point3d pj = mesh.vertices[ j ].p;
+                        b(3*i)   += pi[0]-pj[0];
+                        b(3*i+1) += pi[1]-pj[1];
+                        b(3*i+2) += pi[2]-pj[2];
+                        b(3*j)   += pj[0]-pi[0];
+                        b(3*j+1) += pj[1]-pi[1];
+                        b(3*j+2) += pj[2]-pi[2];
+                    }
                 }
             }
         }
