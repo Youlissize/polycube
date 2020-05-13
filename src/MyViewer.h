@@ -369,14 +369,14 @@ public slots:
     }
 
     void work(){
-        float alpha = 1.0f;
+        float alpha = 0.0f;
         const float epsilon = 0.2f;
 
         Eigen::VectorXd gradient(3*mesh.vertices.size());
 
         Eigen::VectorXd pb(3*mesh.vertices.size());
         for( unsigned int t = 0 ; t < mesh.vertices.size() ; ++t ) {
-            point3d const & p = mesh.vertices[ t ].p;
+            point3d p = mesh.vertices[ t ].p;
             pb(3*t) = p[0];
             pb(3*t+1) = p[1];
             pb(3*t+2) = p[2];
@@ -422,35 +422,51 @@ public slots:
         }
 
         A_mine.convertToEigenFormat(A);
-        gradient = 2*A*pb - 2*b;
+        for (int k = 0; k < 1; k++) {
+            gradient = 2*A*pb - 2*b;
 
-        for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
-            int i0 = mesh.triangles[t][0];
-            int i1 = mesh.triangles[t][1];
-            int i2 = mesh.triangles[t][2];
-            point3d p0 = mesh.vertices[i0].p;
-            point3d p1 = mesh.vertices[i1].p;
-            point3d p2 = mesh.vertices[i2].p;
-            point3d n = point3d::cross( p1-p0 , p2-p0 );
-            double c0 = n[0];
-            double c1 = n[1];
-            double c2 = n[2];
-            double c0b = std::sqrt(c0*c0 + epsilon);
-            double c1b = std::sqrt(c1*c1 + epsilon);
-            double c2b = std::sqrt(c2*c2 + epsilon);
+            for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
+                int i0 = mesh.triangles[t][0];
+                int i1 = mesh.triangles[t][1];
+                int i2 = mesh.triangles[t][2];
+                point3d p0 = point3d(pb(3*i0), pb(3*i0+1), pb(3*i0+2));
+                point3d p1 = point3d(pb(3*i1), pb(3*i1+1), pb(3*i1+2));
+                point3d p2 = point3d(pb(3*i2), pb(3*i2+1), pb(3*i2+2));
+                point3d n = point3d::cross( p1-p0 , p2-p0 );
+                double c0 = n[0];
+                double c1 = n[1];
+                double c2 = n[2];
+                double c0b = std::sqrt(c0*c0 + epsilon);
+                double c1b = std::sqrt(c1*c1 + epsilon);
+                double c2b = std::sqrt(c2*c2 + epsilon);
 
-            gradient(3*i0) += alpha * (c0/c0b * (p1[1] - p2[1]) + c2/c2b * (p2[2] - p1[2]));
-            gradient(3*i1) += alpha * (c0/c0b * (p2[1] - p0[1]) + c2/c2b * (p0[2] - p2[2]));
-            gradient(3*i2) += alpha * (c0/c0b * (p0[1] - p1[1]) + c2/c2b * (p1[2] - p0[2]));
+                gradient(3*i0) += alpha * (c0/c0b * (p1[1] - p2[1]) + c2/c2b * (p2[2] - p1[2]));
+                gradient(3*i1) += alpha * (c0/c0b * (p2[1] - p0[1]) + c2/c2b * (p0[2] - p2[2]));
+                gradient(3*i2) += alpha * (c0/c0b * (p0[1] - p1[1]) + c2/c2b * (p1[2] - p0[2]));
 
-            gradient(3*i0+1) += alpha * (c0/c0b * (p2[0] - p1[0]) + c1/c1b * (p1[2] - p2[2]));
-            gradient(3*i1+1) += alpha * (c0/c0b * (p0[0] - p2[0]) + c1/c1b * (p2[2] - p0[2]));
-            gradient(3*i2+1) += alpha * (c0/c0b * (p1[0] - p0[0]) + c1/c1b * (p0[2] - p1[2]));
+                gradient(3*i0+1) += alpha * (c0/c0b * (p2[0] - p1[0]) + c1/c1b * (p1[2] - p2[2]));
+                gradient(3*i1+1) += alpha * (c0/c0b * (p0[0] - p2[0]) + c1/c1b * (p2[2] - p0[2]));
+                gradient(3*i2+1) += alpha * (c0/c0b * (p1[0] - p0[0]) + c1/c1b * (p0[2] - p1[2]));
 
-            gradient(3*i0+2) += alpha * (c1/c1b * (p2[1] - p1[1]) + c2/c2b * (p1[0] - p2[0]));
-            gradient(3*i1+2) += alpha * (c1/c1b * (p0[1] - p2[1]) + c2/c2b * (p2[0] - p0[0]));
-            gradient(3*i2+2) += alpha * (c1/c1b * (p1[1] - p0[1]) + c2/c2b * (p0[0] - p1[0]));
+                gradient(3*i0+2) += alpha * (c1/c1b * (p2[1] - p1[1]) + c2/c2b * (p1[0] - p2[0]));
+                gradient(3*i1+2) += alpha * (c1/c1b * (p0[1] - p2[1]) + c2/c2b * (p2[0] - p0[0]));
+                gradient(3*i2+2) += alpha * (c1/c1b * (p1[1] - p0[1]) + c2/c2b * (p0[0] - p1[0]));
+            }
+            pb = pb - 0.0001*gradient;
         }
+        for( unsigned int t = 0 ; t < mesh.vertices.size() ; ++t ) {
+            point3d & p = mesh.vertices[ t ].p;
+            if(abs(p[0]-pb(3*t)) > 0.000000001)
+                std::cout << "notoke" << std::endl;
+            if(abs(p[1]-pb(3*t+1)) > 0.000000001)
+                std::cout << "notoke" << std::endl;
+            if(abs(p[2]-pb(3*t+2)) > 0.000000001)
+                std::cout << "notoke" << std::endl;
+            p[0] = pb(3*t);
+            p[1] = pb(3*t+1);
+            p[2] = pb(3*t+2);
+        }
+        draw();
     }
 };
 
