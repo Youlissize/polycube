@@ -8,6 +8,7 @@
 
 struct Vertex{
     point3d p;
+    point3d pInit;
     Vertex() {}
     Vertex(double x , double y , double z) : p(x,y,z) {}
     double & operator [] (unsigned int c) { return p[c]; }

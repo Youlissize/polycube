@@ -271,6 +271,7 @@ public slots:
                 std::cout << fileName.toStdString() << " was opened successfully" << std::endl;
                 point3d bb(FLT_MAX,FLT_MAX,FLT_MAX) , BB(-FLT_MAX,-FLT_MAX,-FLT_MAX);
                 for( unsigned int v = 0 ; v < mesh.vertices.size() ; ++v ) {
+                    mesh.vertices[v].pInit = mesh.vertices[v].p;
                     bb = point3d::min(bb , mesh.vertices[v]);
                     BB = point3d::max(BB , mesh.vertices[v]);
                 }
@@ -414,8 +415,8 @@ public slots:
                         A_mine(3*j+1, 3*i+1) += -1;
                         A_mine(3*j+2, 3*i+2) += -1;
 
-                        point3d pi = mesh.vertices[ i ].p;
-                        point3d pj = mesh.vertices[ j ].p;
+                        point3d pi = mesh.vertices[ i ].pInit; //not current position, but initial position
+                        point3d pj = mesh.vertices[ j ].pInit; //not current position, but initial position
                         b(3*i)   += pi[0]-pj[0];
                         b(3*i+1) += pi[1]-pj[1];
                         b(3*i+2) += pi[2]-pj[2];
