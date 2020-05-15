@@ -380,11 +380,17 @@ public slots:
             pb(3*t) = p[0];
             pb(3*t+1) = p[1];
             pb(3*t+2) = p[2];
+            gradient[3*t] = 0.0;
+            gradient[3*t+1] = 0.0;
+            gradient[3*t+2] = 0.0;
         }
 
         Eigen::SparseMatrix<double> A(3*mesh.vertices.size(), 3*mesh.vertices.size());
         MySparseMatrix A_mine( 3*mesh.vertices.size() , 3*mesh.vertices.size() );
         Eigen::VectorXd b(3*mesh.vertices.size());
+        for(unsigned int t = 0; t < 3*mesh.vertices.size(); ++t) {
+            b[t] = 0.0;
+        }
         for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
             for(unsigned int it = 0; it < mesh.tetras[t].size(); ++it) {
                 for(unsigned int jt = 0; jt < mesh.tetras[t].size(); ++jt) {
