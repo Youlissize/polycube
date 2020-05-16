@@ -35,6 +35,8 @@
 
 // eigen
 #include "extern/eigen3/Eigen/Sparse"
+#include "extern/eigen3/Eigen/Dense"
+#include "extern/eigen3/Eigen/SVD"
 
 class MySparseMatrix {
     std::vector< std::map< unsigned int , double > > _ASparse;
@@ -370,108 +372,140 @@ public slots:
     }
 
     void work(){
-        float alpha = 50000.0f;
+        float alpha = 100000.0f;
         float h = 0.001f;
         const float epsilon = 0.2f;
 
-        Eigen::VectorXd gradient(3*mesh.vertices.size());
-
-        Eigen::VectorXd pb(3*mesh.vertices.size());
-        for( unsigned int t = 0 ; t < mesh.vertices.size() ; ++t ) {
-            point3d p = mesh.vertices[ t ].p;
-            pb(3*t) = p[0];
-            pb(3*t+1) = p[1];
-            pb(3*t+2) = p[2];
-            gradient[3*t] = 0.0;
-            gradient[3*t+1] = 0.0;
-            gradient[3*t+2] = 0.0;
-        }
-
-        Eigen::SparseMatrix<double> A(3*mesh.vertices.size(), 3*mesh.vertices.size());
-        MySparseMatrix A_mine( 3*mesh.vertices.size() , 3*mesh.vertices.size() );
-        Eigen::VectorXd b(3*mesh.vertices.size());
-        for(unsigned int t = 0; t < 3*mesh.vertices.size(); ++t) {
-            b[t] = 0.0;
-        }
+        std::vector< mat33d > tetrahedron_rotation_matrix( mesh.tetras.size() );
         for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
-            for(unsigned int it = 0; it < mesh.tetras[t].size(); ++it) {
-                for(unsigned int jt = 0; jt < mesh.tetras[t].size(); ++jt) {
-                    if(it != jt) {
-                        int i = mesh.tetras[t][it];
-                        int j = mesh.tetras[t][jt];
+            tetrahedron_rotation_matrix[ t ].setIdentity();
+        }
+        Eigen::VectorXd pb(3*mesh.vertices.size());
 
-                        A_mine(3*i, 3*i) += 1;
-                        A_mine(3*i+1, 3*i+1) += 1;
-                        A_mine(3*i+2, 3*i+2) += 1;
+        for(unsigned int rotationIt = 0; rotationIt < 4; ++rotationIt) {
+            Eigen::VectorXd gradient(3*mesh.vertices.size());
 
-                        A_mine(3*j, 3*j) += 1;
-                        A_mine(3*j+1, 3*j+1) += 1;
-                        A_mine(3*j+2, 3*j+2) += 1;
+            for( unsigned int t = 0 ; t < mesh.vertices.size() ; ++t ) {
+                point3d p = mesh.vertices[ t ].p;
+                pb(3*t) = p[0];
+                pb(3*t+1) = p[1];
+                pb(3*t+2) = p[2];
+                gradient[3*t] = 0.0;
+                gradient[3*t+1] = 0.0;
+                gradient[3*t+2] = 0.0;
+            }
 
-                        A_mine(3*i, 3*j) += -1;
-                        A_mine(3*i+1, 3*j+1) += -1;
-                        A_mine(3*i+2, 3*j+2) += -1;
+            Eigen::SparseMatrix<double> A(3*mesh.vertices.size(), 3*mesh.vertices.size());
+            MySparseMatrix A_mine( 3*mesh.vertices.size() , 3*mesh.vertices.size() );
+            Eigen::VectorXd b(3*mesh.vertices.size());
+            for(unsigned int t = 0; t < 3*mesh.vertices.size(); ++t) {
+                b[t] = 0.0;
+            }
+            for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
+                for(unsigned int it = 0; it < mesh.tetras[t].size(); ++it) {
+                    for(unsigned int jt = 0; jt < mesh.tetras[t].size(); ++jt) {
+                        if(it != jt) {
+                            int i = mesh.tetras[t][it];
+                            int j = mesh.tetras[t][jt];
 
-                        A_mine(3*j, 3*i) += -1;
-                        A_mine(3*j+1, 3*i+1) += -1;
-                        A_mine(3*j+2, 3*i+2) += -1;
+                            A_mine(3*i, 3*i) += 1;
+                            A_mine(3*i+1, 3*i+1) += 1;
+                            A_mine(3*i+2, 3*i+2) += 1;
 
-                        point3d pi = mesh.vertices[ i ].pInit; //not current position, but initial position
-                        point3d pj = mesh.vertices[ j ].pInit; //not current position, but initial position
-                        b(3*i)   += pi[0]-pj[0];
-                        b(3*i+1) += pi[1]-pj[1];
-                        b(3*i+2) += pi[2]-pj[2];
-                        b(3*j)   += pj[0]-pi[0];
-                        b(3*j+1) += pj[1]-pi[1];
-                        b(3*j+2) += pj[2]-pi[2];
+                            A_mine(3*j, 3*j) += 1;
+                            A_mine(3*j+1, 3*j+1) += 1;
+                            A_mine(3*j+2, 3*j+2) += 1;
+
+                            A_mine(3*i, 3*j) += -1;
+                            A_mine(3*i+1, 3*j+1) += -1;
+                            A_mine(3*i+2, 3*j+2) += -1;
+
+                            A_mine(3*j, 3*i) += -1;
+                            A_mine(3*j+1, 3*i+1) += -1;
+                            A_mine(3*j+2, 3*i+2) += -1;
+
+                            point3d pi = tetrahedron_rotation_matrix[ t ] * mesh.vertices[ i ].pInit; //not current position, but initial position
+                            point3d pj = tetrahedron_rotation_matrix[ t ] * mesh.vertices[ j ].pInit; //not current position, but initial position
+                            b(3*i)   += pi[0]-pj[0];
+                            b(3*i+1) += pi[1]-pj[1];
+                            b(3*i+2) += pi[2]-pj[2];
+                            b(3*j)   += pj[0]-pi[0];
+                            b(3*j+1) += pj[1]-pi[1];
+                            b(3*j+2) += pj[2]-pi[2];
+                        }
                     }
                 }
             }
-        }
-        A_mine(0,0) += 1;
-        A_mine(1,1) += 1;
-        A_mine(2,2) += 1;
+            A_mine(0,0) += 1;
+            A_mine(1,1) += 1;
+            A_mine(2,2) += 1;
 
-        A_mine.convertToEigenFormat(A);
-        gradient = 2*A*pb - 2*b;
+            A_mine.convertToEigenFormat(A);
+            gradient = 2*A*pb - 2*b;
 
-        for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
-            int i0 = mesh.triangles[t][0];
-            int i1 = mesh.triangles[t][1];
-            int i2 = mesh.triangles[t][2];
-            point3d p0 = point3d(pb(3*i0), pb(3*i0+1), pb(3*i0+2));
-            point3d p1 = point3d(pb(3*i1), pb(3*i1+1), pb(3*i1+2));
-            point3d p2 = point3d(pb(3*i2), pb(3*i2+1), pb(3*i2+2));
-            point3d n = point3d::cross( p1-p0 , p2-p0 );
-            double c0 = n[0];
-            double c1 = n[1];
-            double c2 = n[2];
-            double c0b = std::sqrt(c0*c0 + epsilon);
-            double c1b = std::sqrt(c1*c1 + epsilon);
-            double c2b = std::sqrt(c2*c2 + epsilon);
+            for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
+                int i0 = mesh.triangles[t][0];
+                int i1 = mesh.triangles[t][1];
+                int i2 = mesh.triangles[t][2];
+                point3d p0 = point3d(pb(3*i0), pb(3*i0+1), pb(3*i0+2));
+                point3d p1 = point3d(pb(3*i1), pb(3*i1+1), pb(3*i1+2));
+                point3d p2 = point3d(pb(3*i2), pb(3*i2+1), pb(3*i2+2));
+                point3d n = point3d::cross( p1-p0 , p2-p0 );
+                double c0 = n[0];
+                double c1 = n[1];
+                double c2 = n[2];
+                double c0b = std::sqrt(c0*c0 + epsilon);
+                double c1b = std::sqrt(c1*c1 + epsilon);
+                double c2b = std::sqrt(c2*c2 + epsilon);
 
-            gradient(3*i0) += alpha * (c0/c0b * (p1[1] - p2[1]) + c2/c2b * (p2[2] - p1[2]));
-            gradient(3*i1) += alpha * (c0/c0b * (p2[1] - p0[1]) + c2/c2b * (p0[2] - p2[2]));
-            gradient(3*i2) += alpha * (c0/c0b * (p0[1] - p1[1]) + c2/c2b * (p1[2] - p0[2]));
+                gradient(3*i0) += alpha * (c0/c0b * (p1[1] - p2[1]) + c2/c2b * (p2[2] - p1[2]));
+                gradient(3*i1) += alpha * (c0/c0b * (p2[1] - p0[1]) + c2/c2b * (p0[2] - p2[2]));
+                gradient(3*i2) += alpha * (c0/c0b * (p0[1] - p1[1]) + c2/c2b * (p1[2] - p0[2]));
 
-            gradient(3*i0+1) += alpha * (c0/c0b * (p2[0] - p1[0]) + c1/c1b * (p1[2] - p2[2]));
-            gradient(3*i1+1) += alpha * (c0/c0b * (p0[0] - p2[0]) + c1/c1b * (p2[2] - p0[2]));
-            gradient(3*i2+1) += alpha * (c0/c0b * (p1[0] - p0[0]) + c1/c1b * (p0[2] - p1[2]));
+                gradient(3*i0+1) += alpha * (c0/c0b * (p2[0] - p1[0]) + c1/c1b * (p1[2] - p2[2]));
+                gradient(3*i1+1) += alpha * (c0/c0b * (p0[0] - p2[0]) + c1/c1b * (p2[2] - p0[2]));
+                gradient(3*i2+1) += alpha * (c0/c0b * (p1[0] - p0[0]) + c1/c1b * (p0[2] - p1[2]));
 
-            gradient(3*i0+2) += alpha * (c1/c1b * (p2[1] - p1[1]) + c2/c2b * (p1[0] - p2[0]));
-            gradient(3*i1+2) += alpha * (c1/c1b * (p0[1] - p2[1]) + c2/c2b * (p2[0] - p0[0]));
-            gradient(3*i2+2) += alpha * (c1/c1b * (p1[1] - p0[1]) + c2/c2b * (p0[0] - p1[0]));
-        }
-        if(false){
-            pb = pb - 0.001*gradient;
-        }
-        else
-        {
-            Eigen::SimplicialLDLT< Eigen::SparseMatrix<double> > _Hessian_LDLT;
+                gradient(3*i0+2) += alpha * (c1/c1b * (p2[1] - p1[1]) + c2/c2b * (p1[0] - p2[0]));
+                gradient(3*i1+2) += alpha * (c1/c1b * (p0[1] - p2[1]) + c2/c2b * (p2[0] - p0[0]));
+                gradient(3*i2+2) += alpha * (c1/c1b * (p1[1] - p0[1]) + c2/c2b * (p0[0] - p1[0]));
+            }
+            if(false){
+                pb = pb - h*gradient;
+            }
+            else
+            {
+                Eigen::SimplicialLDLT< Eigen::SparseMatrix<double> > _Hessian_LDLT;
 
-            _Hessian_LDLT.analyzePattern( 2*A );
-            _Hessian_LDLT.compute( 2*A );
-            pb = pb - _Hessian_LDLT.solve( gradient );
+                _Hessian_LDLT.analyzePattern( 2*A );
+                _Hessian_LDLT.compute( 2*A );
+                pb = pb - _Hessian_LDLT.solve( gradient );
+            }
+
+            for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
+                Eigen::Matrix3d S = Eigen::Matrix3d(3,3);
+                for(unsigned int it = 0; it < mesh.tetras[t].size(); ++it) {
+                    for(unsigned int jt = it+1; jt < mesh.tetras[t].size(); ++jt) {
+                        int i = mesh.tetras[t][it];
+                        int j = mesh.tetras[t][jt];
+                        Eigen::Vector3d eip (pb(3*i)-pb(3*j), pb(3*i+1)-pb(3*j+1), pb(3*i+2)-pb(3*j+2));
+                        point3d pei = tetrahedron_rotation_matrix[ t ] * mesh.vertices[ i ].pInit - tetrahedron_rotation_matrix[ t ] * mesh.vertices[ j ].pInit;
+                        Eigen::Vector3d ei (pei[0], pei[1], pei[2]);
+                        S += eip * ei.transpose();
+                    }
+                }
+                Eigen::JacobiSVD<Eigen::Matrix3d> svd(S,  Eigen::ComputeFullU | Eigen::ComputeFullV);
+                Eigen::Matrix3d U = svd.matrixU();
+                Eigen::Matrix3d V = svd.matrixV();
+                Eigen::Matrix3d product = U*V.transpose();
+                Eigen::Matrix3d R = U * Eigen::Vector3d(1, 1, product.determinant()).asDiagonal() * V.transpose();
+                for(unsigned int i = 0; i < 3; i++) {
+                    for(unsigned int j = 0; j < 3; j++) {
+                        tetrahedron_rotation_matrix[ t ](i, j) = R(i, j);
+                    }
+                }
+            }
+
         }
 
         for( unsigned int t = 0 ; t < mesh.vertices.size() ; ++t ) {
