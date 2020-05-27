@@ -447,6 +447,7 @@ public slots:
                 int i0 = mesh.triangles[t][0];
                 int i1 = mesh.triangles[t][1];
                 int i2 = mesh.triangles[t][2];
+                std::vector<int> indexes = {3*i0, 3*i0+1, 3*i0+2, 3*i1, 3*i1+1, 3*i1+2, 3*i2, 3*i2+1, 3*i2+1}; // x0, y0, z0 , x1, y1, z1, x2, y2, z2
                 point3d p0 = point3d(pb(3*i0), pb(3*i0+1), pb(3*i0+2));
                 point3d p1 = point3d(pb(3*i1), pb(3*i1+1), pb(3*i1+2));
                 point3d p2 = point3d(pb(3*i2), pb(3*i2+1), pb(3*i2+2));
@@ -458,17 +459,39 @@ public slots:
                 double c1b = std::sqrt(c1*c1 + epsilon);
                 double c2b = std::sqrt(c2*c2 + epsilon);
 
-                gradient(3*i0) += alpha * (c0/c0b * (p1[1] - p2[1]) + c2/c2b * (p2[2] - p1[2]));
-                gradient(3*i1) += alpha * (c0/c0b * (p2[1] - p0[1]) + c2/c2b * (p0[2] - p2[2]));
-                gradient(3*i2) += alpha * (c0/c0b * (p0[1] - p1[1]) + c2/c2b * (p1[2] - p0[2]));
+                Eigen::VectorXd grad_c0(9);
+                Eigen::VectorXd grad_c1(9);
+                Eigen::VectorXd grad_c2(9);
+                for( unsigned int tgrad = 0 ; tgrad < 9 ; ++tgrad ) {
+                    grad_c0(tgrad) = 0;
+                    grad_c1(tgrad) = 0;
+                    grad_c2(tgrad) = 0;
+                }
+                grad_c0(0) = p1[1] - p2[1]; //y1-y2
+                grad_c0(1) = p2[1] - p0[1]; //y2-y0
+                grad_c0(2) = p0[1] - p1[1]; //y0-y2
+                grad_c0(3) = p2[0] - p1[0]; //x2-x1
+                grad_c0(4) = p0[0] - p2[0]; //x0-x2
+                grad_c0(5) = p1[0] - p0[0]; //x1-x0
 
-                gradient(3*i0+1) += alpha * (c0/c0b * (p2[0] - p1[0]) + c1/c1b * (p1[2] - p2[2]));
-                gradient(3*i1+1) += alpha * (c0/c0b * (p0[0] - p2[0]) + c1/c1b * (p2[2] - p0[2]));
-                gradient(3*i2+1) += alpha * (c0/c0b * (p1[0] - p0[0]) + c1/c1b * (p0[2] - p1[2]));
+                grad_c1(3) = p1[2] - p2[2]; //z1-z2
+                grad_c1(4) = p2[2] - p0[2]; //z2-z0
+                grad_c1(5) = p0[2] - p1[2]; //z0-z1
+                grad_c1(6) = p2[1] - p1[1]; //y2-y1
+                grad_c1(7) = p0[1] - p2[1]; //y0-y2
+                grad_c1(8) = p1[1] - p0[1]; //y1-y0
 
-                gradient(3*i0+2) += alpha * (c1/c1b * (p2[1] - p1[1]) + c2/c2b * (p1[0] - p2[0]));
-                gradient(3*i1+2) += alpha * (c1/c1b * (p0[1] - p2[1]) + c2/c2b * (p2[0] - p0[0]));
-                gradient(3*i2+2) += alpha * (c1/c1b * (p1[1] - p0[1]) + c2/c2b * (p0[0] - p1[0]));
+                grad_c2(0) = p2[2] - p1[2]; //z2-z1
+                grad_c2(1) = p0[2] - p2[2]; //z0-z2
+                grad_c2(2) = p1[2] - p0[2]; //z1-z0
+                grad_c2(6) = p1[0] - p2[0]; //x1-x2
+                grad_c2(7) = p2[0] - p0[0]; //x2-x0
+                grad_c2(8) = p0[0] - p1[0]; //x0-x1
+
+                for(int i = 0; i < 9; ++i) {
+                    gradient(indexes[i]) += alpha * (c0/c0b * grad_c0(i) + c1/c1b * grad_c1(i) + c2/c2b * grad_c2(i));
+                }
+
             }
             if(false){
                 pb = pb - h*gradient;
