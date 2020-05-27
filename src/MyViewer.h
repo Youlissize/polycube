@@ -372,9 +372,33 @@ public slots:
     }
 
     void work(){
-        float alpha = 100000.0f;
+        float alpha = 0.5f;
         float h = 0.001f;
-        const float epsilon = 0.2f;
+        float epsilon = 0.6f;
+
+        for(int alphait = 0; alphait < 1; alphait++) {
+        std::cout << alphait*100/20 << "%" << std::endl;
+        /*if(alphait != 0 && alphait % 30 == 0) {
+            alpha = alpha * 2;
+            if (epsilon > 0.01f)
+                epsilon = epsilon / 2;
+            if (epsilon < 0.01f)
+                epsilon = 0.01f;
+        }*/
+
+        double energy = 0;
+
+        for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
+            int i0 = mesh.triangles[t][0];
+            int i1 = mesh.triangles[t][1];
+            int i2 = mesh.triangles[t][2];
+            point3d p0 = mesh.vertices[i0].p;
+            point3d p1 = mesh.vertices[i1].p;
+            point3d p2 = mesh.vertices[i2].p;
+            point3d n = point3d::cross( p1-p0 , p2-p0 );
+            energy += fabs(n[0]) + fabs(n[1]) + fabs(n[2]);
+        }
+        std::cout << "Energy : " << energy << std::endl;
 
         std::vector< mat33d > tetrahedron_rotation_matrix( mesh.tetras.size() );
         for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
@@ -595,6 +619,7 @@ public slots:
             p[0] = pb(3*t);
             p[1] = pb(3*t+1);
             p[2] = pb(3*t+2);
+        }
         }
         update();
     }
