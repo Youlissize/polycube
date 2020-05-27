@@ -406,9 +406,11 @@ public slots:
         }
         Eigen::VectorXd pb(3*mesh.vertices.size());
 
+
         for(unsigned int rotationIt = 0; rotationIt < 4; ++rotationIt) {
             Eigen::VectorXd gradient(3*mesh.vertices.size());
 
+            // Initialize Values
             for( unsigned int t = 0 ; t < mesh.vertices.size() ; ++t ) {
                 point3d p = mesh.vertices[ t ].p;
                 pb(3*t) = p[0];
@@ -419,6 +421,7 @@ public slots:
                 gradient[3*t+2] = 0.0;
             }
 
+            // Compute ARAP Gradient
             Eigen::SparseMatrix<double> A(3*mesh.vertices.size(), 3*mesh.vertices.size());
             MySparseMatrix A_mine( 3*mesh.vertices.size() , 3*mesh.vertices.size() );
             Eigen::VectorXd b(3*mesh.vertices.size());
@@ -469,7 +472,6 @@ public slots:
 
             Eigen::SparseMatrix<double> polycubeHessianSparce(3*mesh.vertices.size(), 3*mesh.vertices.size());
             MySparseMatrix polycubeHessian( 3*mesh.vertices.size() , 3*mesh.vertices.size() );
-
             for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
                 int i0 = mesh.triangles[t][0];
                 int i1 = mesh.triangles[t][1];
@@ -575,10 +577,10 @@ public slots:
                     }
                 }
             }
-            if(false){
+            if(false){  //Gradient Descent
                 pb = pb - h*gradient;
             }
-            else
+            else //or Newton Descent
             {
                 polycubeHessian.convertToEigenFormat(polycubeHessianSparce);
                 Eigen::SimplicialLDLT< Eigen::SparseMatrix<double> > _Hessian_LDLT;
@@ -588,6 +590,7 @@ public slots:
                 pb = pb - _Hessian_LDLT.solve( gradient );
             }
 
+            //Optimize Rotation matrices
             for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
                 Eigen::Matrix3d S = Eigen::Matrix3d(3,3);
                 for(unsigned int it = 0; it < mesh.tetras[t].size(); ++it) {
@@ -614,6 +617,7 @@ public slots:
 
         }
 
+        // Update Positions
         for( unsigned int t = 0 ; t < mesh.vertices.size() ; ++t ) {
             point3d & p = mesh.vertices[ t ].p;
             p[0] = pb(3*t);
