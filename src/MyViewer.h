@@ -371,12 +371,54 @@ public slots:
         }
     }
 
+    float area(int triangle) {
+        int i0 = mesh.triangles[triangle][0];
+        int i1 = mesh.triangles[triangle][1];
+        int i2 = mesh.triangles[triangle][2];
+        point3d p0 = mesh.vertices[i0].pInit;
+        point3d p1 = mesh.vertices[i1].pInit;
+        point3d p2 = mesh.vertices[i2].pInit;
+        point3d n = point3d::cross( p1-p0 , p2-p0 );
+        return n.norm()*0.5;
+    }
+
     void work(){
         float alpha = 0.5f;
-        float h = 0.001f;
+        float beta = 0.5f; // for shape complexity
+        float h = 0.001f; // only for gradient descent
         float epsilon = 0.6f;
 
-        for(int alphait = 0; alphait < 1; alphait++) {
+        // Calcul once the mesh total surface
+        float totArea = 0;
+        for (unsigned int t=0; t<mesh.triangles.size(); t++){
+            totArea += area(t);
+        }
+
+        // Initialise Edges
+        // link edges with their 2 adjacent Triangles
+        // Edges = map ( (point1,point2) , (triangle1,triangle2) )
+        std::map<std::pair<int,int>,std::pair<int,int>> edges = std::map<std::pair<int,int>,std::pair<int,int>>();
+        for (unsigned int t=0; t<mesh.triangles.size(); t++){
+            for (int i=0; i<3; i++){
+                int tmp1 = mesh.triangles[t][i];
+                int tmp2 = mesh.triangles[t][((i+1)%3)];
+                int p1 = std::min(tmp1,tmp2);
+                int p2 = std::max(tmp1,tmp2);
+
+                std::pair<int,int> e = std::pair<int,int>(p1,p2);
+                auto it = edges.find(e);
+                if( it == edges.end() ) { // edge (p1,p2) never seen
+                    edges.insert(std::pair<std::pair<int,int>,std::pair<int,int>>(e, std::pair<int,int>(t,-1)));
+                }
+                else {
+                    it->second.second = t;
+                }
+            }
+        }
+
+
+
+        for(int alphait = 0; alphait < 1; alphait++) {  // Main loop
         std::cout << alphait*100/20 << "%" << std::endl;
         /*if(alphait != 0 && alphait % 30 == 0) {
             alpha = alpha * 2;
@@ -577,6 +619,34 @@ public slots:
                     }
                 }
             }
+
+
+            // Compute the Aeij (for the normal alignment gradient)
+            Eigen::VectorXd edgeWeights(edges.size());  // A(eij,X)
+            Eigen::VectorXd neighboorsArea(mesh.triangles.size());
+            for (unsigned int i=0; i< mesh.triangles.size() ; i++ ){
+                neighboorsArea[i]=0;
+            }
+            for (auto it=edges.begin(); it !=edges.end(); it++) {
+                int i = it->second.first;
+                int j = it->second.second;
+                neighboorsArea[i] += area(j);
+                neighboorsArea[j] += area(i);
+            }
+            int ind=0;
+            for (auto it=edges.begin(); it !=edges.end(); it++) {
+                int i = it->second.first;
+                int j = it->second.second;
+
+                float gammaij = area(j)/neighboorsArea(i);
+                float gammaji = area(i)/neighboorsArea(j);
+                edgeWeights[ind]= gammaij*area(i) + gammaji*area(j);
+                ind ++;
+            }
+            // Compute normal alignment gradient
+            //TODO
+
+
             if(false){  //Gradient Descent
                 pb = pb - h*gradient;
             }
