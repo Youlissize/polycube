@@ -575,53 +575,53 @@ public slots:
                 Eigen::MatrixXd H_small = Eigen::MatrixXd(9,9);
                 //Compute c0, c1 and c2 hessian's first part
                 H_small += epsilon * (1/(c0b*c0b*c0b) * grad_c0 * grad_c0.transpose() + 1/(c1b*c1b*c1b) * grad_c1 * grad_c1.transpose() + 1/(c2b*c2b*c2b) * grad_c2 * grad_c2.transpose());
-                //Compute c0 hessian's second part
-                H_small(0,4) += c0/c0b;
-                H_small(4,0) += c0/c0b;
-                H_small(0,7) += -c0/c0b;
-                H_small(7,0) += -c0/c0b;
+                //Compute c0 hessian's second part                H_small(1,5) += c0/c0b;
+                H_small(5,1) += c0/c0b;
+                H_small(1,8) += -c0/c0b;
+                H_small(8,1) += -c0/c0b;
 
-                H_small(3,1) += -c0/c0b;
-                H_small(1,3) += -c0/c0b;
-                H_small(3,7) += c0/c0b;
+                H_small(4,2) += -c0/c0b;
+                H_small(2,4) += -c0/c0b;
+                H_small(4,8) += c0/c0b;
+                H_small(8,4) += c0/c0b;
+
                 H_small(7,3) += c0/c0b;
-
-                H_small(6,1) += c0/c0b;
-                H_small(1,6) += c0/c0b;
-                H_small(6,4) += -c0/c0b;
-                H_small(4,6) += -c0/c0b;
+                H_small(3,7) += c0/c0b;
+                H_small(7,5) += -c0/c0b;
+                H_small(5,7) += -c0/c0b;
 
                 //Compute c1 hessian's second part
-                H_small(1,5) += c1/c1b;
-                H_small(5,1) += c1/c1b;
-                H_small(1,8) += -c1/c1b;
-                H_small(8,1) += -c1/c1b;
+                H_small(2,3) += c1/c1b;
+                H_small(3,2) += c1/c1b;
+                H_small(2,6) += -c1/c1b;
+                H_small(6,2) += -c1/c1b;
 
-                H_small(4,2) += -c1/c1b;
-                H_small(2,4) += -c1/c1b;
-                H_small(4,8) += c1/c1b;
-                H_small(8,4) += c1/c1b;
+                H_small(5,0) += -c1/c1b;
+                H_small(0,5) += -c1/c1b;
+                H_small(5,6) += c1/c1b;
+                H_small(6,5) += c1/c1b;
 
-                H_small(7,3) += c1/c1b;
-                H_small(3,7) += c1/c1b;
-                H_small(7,5) += -c1/c1b;
-                H_small(5,7) += -c1/c1b;
+                H_small(8,0) += c1/c1b;
+                H_small(0,8) += c1/c1b;
+                H_small(8,3) += -c1/c1b;
+                H_small(3,8) += -c1/c1b;
 
                 //Compute c2 hessian's second part
-                H_small(2,3) += c2/c2b;
-                H_small(3,2) += c2/c2b;
-                H_small(2,6) += -c2/c2b;
-                H_small(6,2) += -c2/c2b;
+                H_small(0,4) += c2/c2b;
+                H_small(4,0) += c2/c2b;
+                H_small(0,7) += -c2/c2b;
+                H_small(7,0) += -c2/c2b;
 
-                H_small(5,0) += -c2/c2b;
-                H_small(0,5) += -c2/c2b;
-                H_small(5,6) += c2/c2b;
-                H_small(6,5) += c2/c2b;
+                H_small(3,1) += -c2/c2b;
+                H_small(1,3) += -c2/c2b;
+                H_small(3,7) += c2/c2b;
+                H_small(7,3) += c2/c2b;
 
-                H_small(8,0) += c2/c2b;
-                H_small(0,8) += c2/c2b;
-                H_small(8,3) += -c2/c2b;
-                H_small(3,8) += -c2/c2b;
+                H_small(6,1) += c2/c2b;
+                H_small(1,6) += c2/c2b;
+                H_small(6,4) += -c2/c2b;
+                H_small(4,6) += -c2/c2b;
+
                 for(int i = 0; i < 9; ++i) {
                     for(int j = 0; j < 9; ++j) {
                         polycubeHessian(indexes[i],indexes[j]) += H_small(i,j);
