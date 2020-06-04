@@ -126,7 +126,7 @@ public :
             point3d const & p0 = mesh.vertices[ mesh.triangles[t][0] ].p;
             point3d const & p1 = mesh.vertices[ mesh.triangles[t][1] ].p;
             point3d const & p2 = mesh.vertices[ mesh.triangles[t][2] ].p;
-            point3d const & n = point3d::cross( p1-p0 , p2-p0 ).direction();
+            point3d const & n = - point3d::cross( p1-p0 , p2-p0 ).direction();
             glNormal3f(n[0],n[1],n[2]);
             glVertex3f(p0[0],p0[1],p0[2]);
             glVertex3f(p1[0],p1[1],p1[2]);
@@ -547,26 +547,26 @@ public slots:
                     grad_c1(tgrad) = 0;
                     grad_c2(tgrad) = 0;
                 }
-                grad_c0(0) = p1[1] - p2[1]; //y1-y2
-                grad_c0(1) = p2[1] - p0[1]; //y2-y0
-                grad_c0(2) = p0[1] - p1[1]; //y0-y2
-                grad_c0(3) = p2[0] - p1[0]; //x2-x1
-                grad_c0(4) = p0[0] - p2[0]; //x0-x2
-                grad_c0(5) = p1[0] - p0[0]; //x1-x0
+                grad_c2(0) = p1[1] - p2[1]; //y1-y2
+                grad_c2(1) = p2[0] - p1[0]; //x2-x1
+                grad_c2(3) = p2[1] - p0[1]; //y2-y0
+                grad_c2(4) = p0[0] - p2[0]; //x0-x2
+                grad_c2(6) = p0[1] - p1[1]; //y0-y2
+                grad_c2(7) = p1[0] - p0[0]; //x1-x0
 
-                grad_c1(3) = p1[2] - p2[2]; //z1-z2
-                grad_c1(4) = p2[2] - p0[2]; //z2-z0
-                grad_c1(5) = p0[2] - p1[2]; //z0-z1
-                grad_c1(6) = p2[1] - p1[1]; //y2-y1
-                grad_c1(7) = p0[1] - p2[1]; //y0-y2
-                grad_c1(8) = p1[1] - p0[1]; //y1-y0
+                grad_c0(1) = p1[2] - p2[2]; //z1-z2
+                grad_c0(2) = p2[1] - p1[1]; //y2-y1
+                grad_c0(4) = p2[2] - p0[2]; //z2-z0
+                grad_c0(5) = p0[1] - p2[1]; //y0-y2
+                grad_c0(7) = p0[2] - p1[2]; //z0-z1
+                grad_c0(8) = p1[1] - p0[1]; //y1-y0
 
-                grad_c2(0) = p2[2] - p1[2]; //z2-z1
-                grad_c2(1) = p0[2] - p2[2]; //z0-z2
-                grad_c2(2) = p1[2] - p0[2]; //z1-z0
-                grad_c2(6) = p1[0] - p2[0]; //x1-x2
-                grad_c2(7) = p2[0] - p0[0]; //x2-x0
-                grad_c2(8) = p0[0] - p1[0]; //x0-x1
+                grad_c1(0) = p2[2] - p1[2]; //z2-z1
+                grad_c1(2) = p1[0] - p2[0]; //x1-x2
+                grad_c1(3) = p0[2] - p2[2]; //z0-z2
+                grad_c1(5) = p2[0] - p0[0]; //x2-x0
+                grad_c1(6) = p1[2] - p0[2]; //z1-z0
+                grad_c1(8) = p0[0] - p1[0]; //x0-x1
 
                 for(int i = 0; i < 9; ++i) {
                     gradient(indexes[i]) += alpha * (c0/c0b * grad_c0(i) + c1/c1b * grad_c1(i) + c2/c2b * grad_c2(i));
