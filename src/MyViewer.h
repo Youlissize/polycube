@@ -527,7 +527,7 @@ public slots:
                 int i0 = mesh.triangles[t][0];
                 int i1 = mesh.triangles[t][1];
                 int i2 = mesh.triangles[t][2];
-                std::vector<int> indexes = {3*i0, 3*i0+1, 3*i0+2, 3*i1, 3*i1+1, 3*i1+2, 3*i2, 3*i2+1, 3*i2+1}; // x0, y0, z0 , x1, y1, z1, x2, y2, z2
+                std::vector<int> indexes = {3*i0, 3*i0+1, 3*i0+2, 3*i1, 3*i1+1, 3*i1+2, 3*i2, 3*i2+1, 3*i2+2}; // x0, y0, z0 , x1, y1, z1, x2, y2, z2
                 point3d p0 = point3d(pb(3*i0), pb(3*i0+1), pb(3*i0+2));
                 point3d p1 = point3d(pb(3*i1), pb(3*i1+1), pb(3*i1+2));
                 point3d p2 = point3d(pb(3*i2), pb(3*i2+1), pb(3*i2+2));
