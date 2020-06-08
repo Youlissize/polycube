@@ -101,6 +101,8 @@ class MyViewer : public QGLViewer , public QOpenGLFunctions_3_0
 
     std::vector< mat33d > tetrahedron_rotation_matrix;
 
+    double meshLength;
+
     QWidget * controls;
 
 public :
@@ -297,6 +299,8 @@ public slots:
                 for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
                     tetrahedron_rotation_matrix[ t ].setIdentity();
                 }
+
+                meshLength = (BB-bb).norm();
 
                 update();
                 std::cout << "Opened " << fileName.toStdString() << " that contains " << mesh.tetras.size() << " tetrahedra, " << mesh.triangles.size()
@@ -595,7 +599,7 @@ public slots:
                     grad_c1(8) = p0[0] - p1[0]; //x0-x1
 
                     for(int i = 0; i < 9; ++i) {
-                        gradient(indexes[i]) += alpha * (c0/c0b * grad_c0(i) + c1/c1b * grad_c1(i) + c2/c2b * grad_c2(i));
+                        gradient(indexes[i]) += alpha * meshLength * (c0/c0b * grad_c0(i) + c1/c1b * grad_c1(i) + c2/c2b * grad_c2(i));
                     }
 
                     Eigen::MatrixXd H_small = Eigen::MatrixXd(9,9);
@@ -656,7 +660,7 @@ public slots:
 
                     for(int i = 0; i < 9; ++i) {
                         for(int j = 0; j < 9; ++j) {
-                            polycubeHessian(indexes[i],indexes[j]) += H_small(i,j);
+                            polycubeHessian(indexes[i],indexes[j]) += meshLength * H_small(i,j);
                         }
                     }
                 }
