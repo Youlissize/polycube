@@ -88,14 +88,18 @@ class MyViewer : public QGLViewer , public QOpenGLFunctions_3_0
 
     Mesh mesh;
 
-    float alphaInit = 5.f;
+    float alphaInit = 0.02f;
     float alpha = alphaInit;
     float beta = 5000.f; // for shape complexity
     float h = 0.001f; // only for gradient descent
-    float epsilon = 0.25f;
+    float epsilon = 0.8;
 
 
-    bool increase_alpha = false;
+    bool increase_alpha = true;
+    unsigned int step_by_alpha_increase = 50;
+
+    unsigned int rotation_opti_by_step = 1;
+    unsigned int total_steps = 105;
 
     bool use_triangle_area_constraints = true;
 
@@ -450,15 +454,15 @@ public slots:
 
 
 
-        for(int alphait = 0; alphait < 2; alphait++) {  // Main loop
-            std::cout << alphait*100/20 << "%" << std::endl;
-            /*if(alphait != 0 && alphait % 30 == 0) {
-            alpha = alpha * 2;
-            if (epsilon > 0.01f)
-                epsilon = epsilon / 2;
-            if (epsilon < 0.01f)
-                epsilon = 0.01f;
-        }*/
+        for(int alphait = 0; alphait < total_steps; alphait++) {  // Main loop
+            std::cout << alphait*100/total_steps << "%" << std::endl;
+            if(increase_alpha && alphait != 0 && alphait % step_by_alpha_increase == 0) {
+                alpha = alpha * 2;
+                /*if (epsilon > 0.01f)
+                    epsilon = epsilon / 2;
+                if (epsilon < 0.01f)
+                    epsilon = 0.01f;*/
+            }
 
             double energy = 0;
 
@@ -477,7 +481,7 @@ public slots:
             Eigen::VectorXd pb(3*mesh.vertices.size());
 
 
-            for(unsigned int rotationIt = 0; rotationIt < 3; ++rotationIt) {
+            for(unsigned int rotationIt = 0; rotationIt < rotation_opti_by_step; ++rotationIt) {
                 Eigen::VectorXd gradient(3*mesh.vertices.size());
 
                 // Initialize Values
