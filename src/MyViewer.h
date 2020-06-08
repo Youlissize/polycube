@@ -90,7 +90,7 @@ class MyViewer : public QGLViewer , public QOpenGLFunctions_3_0
 
     float alphaInit = 0.02f;
     float alpha = alphaInit;
-    float beta = 5000.f; // for shape complexity
+    float beta = 50.f; // for shape complexity
     float h = 0.001f; // only for gradient descent
     float epsilon = 0.8;
 
@@ -424,6 +424,16 @@ public slots:
 
     void work(){
 
+        // Compute an approximate size of the mesh
+        point3d bb(FLT_MAX,FLT_MAX,FLT_MAX) , BB(-FLT_MAX,-FLT_MAX,-FLT_MAX);
+        for( unsigned int v = 0 ; v < mesh.vertices.size() ; ++v ) {
+            mesh.vertices[v].pInit = mesh.vertices[v].p;
+            bb = point3d::min(bb , mesh.vertices[v]);
+            BB = point3d::max(BB , mesh.vertices[v]);
+        }
+        float meshSize = fmax(fmax(BB.x()-bb.x(),BB.y()-bb.y()), BB.z()-bb.z()) / 500;
+
+
         // Calcul once the mesh total surface
         float totArea = 0;
         for (unsigned int t=0; t<mesh.triangles.size(); t++){
@@ -553,6 +563,7 @@ public slots:
                 A_mine.convertToEigenFormat(A);
                 gradient = 2*A*pb - 2*b;
 
+
                 std::cout << "\t finished computing the ARAP Hessian and gradient" << std::endl;
 
                 Eigen::SparseMatrix<double> polycubeHessianSparse(3*mesh.vertices.size(), 3*mesh.vertices.size());
@@ -670,7 +681,7 @@ public slots:
                 }
 
                 std::cout << "\t finished computing the normal L1 norm Hessian and gradient" << std::endl;
-/*
+
                 // Compute the Aeij (for the normal alignment gradient)
                 Eigen::VectorXd edgeWeights(edges.size());  // A(eij,X)
                 Eigen::VectorXd neighboorsArea(mesh.triangles.size());
@@ -727,11 +738,10 @@ public slots:
 
                     point3d ni = point3d::cross(pB-pA , pC-pA);
                     point3d nj = point3d::cross(pD-pA , pB-pA);
-                    std::cout<<"before: "<<gradient[indA*3+0]<<std::endl;
+
                     gradient[indA*3+0] += beta*2*(Aeij/totArea)* (
                                   (ni.y()-nj.y())*( (pC.z()-pB.z())/airei +  (pD.z()-pB.z())/airej)
                                 + (ni.z()-nj.z())*( (-pC.y()+pB.y())/airei +  (-pD.y()+pB.y())/airej)   );
-                    std::cout<<"after: "<<gradient[indA*3+0]<<std::endl;
                     gradient[indA*3+1] += beta*2*(Aeij/totArea)* (
                                   (ni.x()-nj.x())*( (-pC.z()+pB.z())/airei +  (-pD.z()+pB.z())/airej)
                                 + (ni.z()-nj.z())*( (pC.x()-pB.x())/airei +  (pD.x()-pB.x())/airej)   );
@@ -773,8 +783,13 @@ public slots:
 
                     ind ++;
                 }
-*/
 
+
+                for (unsigned int i=0; i<3*mesh.vertices.size(); i++) {
+                    polycubeHessian(i,i) += 1;
+                }
+
+                std::cout << "\t finished computing the normal alignement gradient" << std::endl;
 
 
                 if(false){  //Gradient Descent
@@ -950,7 +965,7 @@ public slots:
         }
 
         if( increase_alpha )
-            alpha *= 1.1;
+            alpha *= 1.4;
 
         update();
     }
