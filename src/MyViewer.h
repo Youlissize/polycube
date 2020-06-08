@@ -53,6 +53,8 @@ public:
     ~MySparseMatrix() {
     }
 
+    std::map< unsigned int , double > const & getRow( unsigned int r ) const { return _ASparse[r]; }
+
     void setDimensions( int rows , int columns ) {
         _rows = rows; _columns = columns;
         _ASparse.clear();
@@ -85,6 +87,19 @@ class MyViewer : public QGLViewer , public QOpenGLFunctions_3_0
     Q_OBJECT
 
     Mesh mesh;
+
+    float alphaInit = 5.f;
+    float alpha = alphaInit;
+    float beta = 5000.f; // for shape complexity
+    float h = 0.001f; // only for gradient descent
+    float epsilon = 0.25f;
+
+
+    bool increase_alpha = false;
+
+    bool use_triangle_area_constraints = true;
+
+    std::vector< mat33d > tetrahedron_rotation_matrix;
 
     QWidget * controls;
 
@@ -270,7 +285,6 @@ public slots:
                 success =  MeshIO::openTrisAndTets(fileName.toStdString() , mesh.vertices , mesh.triangles, mesh.tetras );
 
             if(success) {
-                std::cout << fileName.toStdString() << " was opened successfully" << std::endl;
                 point3d bb(FLT_MAX,FLT_MAX,FLT_MAX) , BB(-FLT_MAX,-FLT_MAX,-FLT_MAX);
                 for( unsigned int v = 0 ; v < mesh.vertices.size() ; ++v ) {
                     mesh.vertices[v].pInit = mesh.vertices[v].p;
@@ -278,7 +292,16 @@ public slots:
                     BB = point3d::max(BB , mesh.vertices[v]);
                 }
                 adjustCamera(bb,BB);
+
+                tetrahedron_rotation_matrix.resize( mesh.tetras.size() );
+                for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
+                    tetrahedron_rotation_matrix[ t ].setIdentity();
+                }
+
                 update();
+                std::cout << "Opened " << fileName.toStdString() << " that contains " << mesh.tetras.size() << " tetrahedra, " << mesh.triangles.size()
+                          << " boundary triangles, and " << mesh.vertices.size() << " vertices." << std::endl;
+                std::cout << "Bounding box  :  " << bb << "    ----   "  << BB << std::endl << std::endl;
             }
             else
                 std::cout << fileName.toStdString() << " could not be opened" << std::endl;
@@ -392,10 +415,6 @@ public slots:
     }
 
     void work(){
-        float alpha = 0.5f;
-        float beta = 50.f; // for shape complexity
-        float h = 0.001f; // only for gradient descent
-        float epsilon = 0.6f;
 
         // Calcul once the mesh total surface
         float totArea = 0;
@@ -427,9 +446,9 @@ public slots:
 
 
 
-        for(int alphait = 0; alphait < 1; alphait++) {  // Main loop
-        std::cout << alphait*100/20 << "%" << std::endl;
-        /*if(alphait != 0 && alphait % 30 == 0) {
+        for(int alphait = 0; alphait < 2; alphait++) {  // Main loop
+            std::cout << alphait*100/20 << "%" << std::endl;
+            /*if(alphait != 0 && alphait % 30 == 0) {
             alpha = alpha * 2;
             if (epsilon > 0.01f)
                 epsilon = epsilon / 2;
@@ -437,360 +456,494 @@ public slots:
                 epsilon = 0.01f;
         }*/
 
-        double energy = 0;
+            double energy = 0;
 
-        for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
-            int i0 = mesh.triangles[t][0];
-            int i1 = mesh.triangles[t][1];
-            int i2 = mesh.triangles[t][2];
-            point3d p0 = mesh.vertices[i0].p;
-            point3d p1 = mesh.vertices[i1].p;
-            point3d p2 = mesh.vertices[i2].p;
-            point3d n = point3d::cross( p1-p0 , p2-p0 );
-            energy += fabs(n[0]) + fabs(n[1]) + fabs(n[2]);
-        }
-        std::cout << "Energy : " << energy << std::endl;
-
-        std::vector< mat33d > tetrahedron_rotation_matrix( mesh.tetras.size() );
-        for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
-            tetrahedron_rotation_matrix[ t ].setIdentity();
-        }
-        Eigen::VectorXd pb(3*mesh.vertices.size());
-
-
-        for(unsigned int rotationIt = 0; rotationIt < 3; ++rotationIt) {
-            Eigen::VectorXd gradient(3*mesh.vertices.size());
-
-            // Initialize Values
-            for( unsigned int t = 0 ; t < mesh.vertices.size() ; ++t ) {
-                point3d p = mesh.vertices[ t ].p;
-                pb(3*t) = p[0];
-                pb(3*t+1) = p[1];
-                pb(3*t+2) = p[2];
-                gradient[3*t] = 0.0;
-                gradient[3*t+1] = 0.0;
-                gradient[3*t+2] = 0.0;
-            }
-
-            // Compute ARAP Gradient
-            Eigen::SparseMatrix<double> A(3*mesh.vertices.size(), 3*mesh.vertices.size());
-            MySparseMatrix A_mine( 3*mesh.vertices.size() , 3*mesh.vertices.size() );
-            Eigen::VectorXd b(3*mesh.vertices.size());
-            for(unsigned int t = 0; t < 3*mesh.vertices.size(); ++t) {
-                b[t] = 0.0;
-            }
-            for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
-                for(unsigned int it = 0; it < mesh.tetras[t].size(); ++it) {
-                    for(unsigned int jt = 0; jt < mesh.tetras[t].size(); ++jt) {
-                        if(it != jt) {
-                            int i = mesh.tetras[t][it];
-                            int j = mesh.tetras[t][jt];
-
-                            A_mine(3*i, 3*i) += 1;
-                            A_mine(3*i+1, 3*i+1) += 1;
-                            A_mine(3*i+2, 3*i+2) += 1;
-
-                            A_mine(3*j, 3*j) += 1;
-                            A_mine(3*j+1, 3*j+1) += 1;
-                            A_mine(3*j+2, 3*j+2) += 1;
-
-                            A_mine(3*i, 3*j) += -1;
-                            A_mine(3*i+1, 3*j+1) += -1;
-                            A_mine(3*i+2, 3*j+2) += -1;
-
-                            A_mine(3*j, 3*i) += -1;
-                            A_mine(3*j+1, 3*i+1) += -1;
-                            A_mine(3*j+2, 3*i+2) += -1;
-
-                            point3d pi = tetrahedron_rotation_matrix[ t ] * mesh.vertices[ i ].pInit; //not current position, but initial position
-                            point3d pj = tetrahedron_rotation_matrix[ t ] * mesh.vertices[ j ].pInit; //not current position, but initial position
-                            b(3*i)   += pi[0]-pj[0];
-                            b(3*i+1) += pi[1]-pj[1];
-                            b(3*i+2) += pi[2]-pj[2];
-                            b(3*j)   += pj[0]-pi[0];
-                            b(3*j+1) += pj[1]-pi[1];
-                            b(3*j+2) += pj[2]-pi[2];
-                        }
-                    }
-                }
-            }
-            A_mine(0,0) += 1;
-            A_mine(1,1) += 1;
-            A_mine(2,2) += 1;
-
-            A_mine.convertToEigenFormat(A);
-            gradient = 2*A*pb - 2*b;
-
-            Eigen::SparseMatrix<double> polycubeHessianSparce(3*mesh.vertices.size(), 3*mesh.vertices.size());
-            MySparseMatrix polycubeHessian( 3*mesh.vertices.size() , 3*mesh.vertices.size() );
             for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
                 int i0 = mesh.triangles[t][0];
                 int i1 = mesh.triangles[t][1];
                 int i2 = mesh.triangles[t][2];
-                std::vector<int> indexes = {3*i0, 3*i0+1, 3*i0+2, 3*i1, 3*i1+1, 3*i1+2, 3*i2, 3*i2+1, 3*i2+2}; // x0, y0, z0 , x1, y1, z1, x2, y2, z2
-                point3d p0 = point3d(pb(3*i0), pb(3*i0+1), pb(3*i0+2));
-                point3d p1 = point3d(pb(3*i1), pb(3*i1+1), pb(3*i1+2));
-                point3d p2 = point3d(pb(3*i2), pb(3*i2+1), pb(3*i2+2));
+                point3d p0 = mesh.vertices[i0].p;
+                point3d p1 = mesh.vertices[i1].p;
+                point3d p2 = mesh.vertices[i2].p;
                 point3d n = point3d::cross( p1-p0 , p2-p0 );
-                double c0 = n[0];
-                double c1 = n[1];
-                double c2 = n[2];
-                double c0b = std::sqrt(c0*c0 + epsilon);
-                double c1b = std::sqrt(c1*c1 + epsilon);
-                double c2b = std::sqrt(c2*c2 + epsilon);
+                energy += fabs(n[0]) + fabs(n[1]) + fabs(n[2]);
+            }
+            std::cout << "Energy : " << energy << std::endl;
 
-                Eigen::VectorXd grad_c0(9);
-                Eigen::VectorXd grad_c1(9);
-                Eigen::VectorXd grad_c2(9);
-                for( unsigned int tgrad = 0 ; tgrad < 9 ; ++tgrad ) {
-                    grad_c0(tgrad) = 0;
-                    grad_c1(tgrad) = 0;
-                    grad_c2(tgrad) = 0;
-                }
-                grad_c2(0) = p1[1] - p2[1]; //y1-y2
-                grad_c2(1) = p2[0] - p1[0]; //x2-x1
-                grad_c2(3) = p2[1] - p0[1]; //y2-y0
-                grad_c2(4) = p0[0] - p2[0]; //x0-x2
-                grad_c2(6) = p0[1] - p1[1]; //y0-y2
-                grad_c2(7) = p1[0] - p0[0]; //x1-x0
+            Eigen::VectorXd pb(3*mesh.vertices.size());
 
-                grad_c0(1) = p1[2] - p2[2]; //z1-z2
-                grad_c0(2) = p2[1] - p1[1]; //y2-y1
-                grad_c0(4) = p2[2] - p0[2]; //z2-z0
-                grad_c0(5) = p0[1] - p2[1]; //y0-y2
-                grad_c0(7) = p0[2] - p1[2]; //z0-z1
-                grad_c0(8) = p1[1] - p0[1]; //y1-y0
 
-                grad_c1(0) = p2[2] - p1[2]; //z2-z1
-                grad_c1(2) = p1[0] - p2[0]; //x1-x2
-                grad_c1(3) = p0[2] - p2[2]; //z0-z2
-                grad_c1(5) = p2[0] - p0[0]; //x2-x0
-                grad_c1(6) = p1[2] - p0[2]; //z1-z0
-                grad_c1(8) = p0[0] - p1[0]; //x0-x1
+            for(unsigned int rotationIt = 0; rotationIt < 3; ++rotationIt) {
+                Eigen::VectorXd gradient(3*mesh.vertices.size());
 
-                for(int i = 0; i < 9; ++i) {
-                    gradient(indexes[i]) += alpha * (c0/c0b * grad_c0(i) + c1/c1b * grad_c1(i) + c2/c2b * grad_c2(i));
+                // Initialize Values
+                for( unsigned int v = 0 ; v < mesh.vertices.size() ; ++v ) {
+                    point3d p = mesh.vertices[ v ].p;
+                    pb(3*v) = p[0];
+                    pb(3*v+1) = p[1];
+                    pb(3*v+2) = p[2];
+                    gradient[3*v] = 0.0;
+                    gradient[3*v+1] = 0.0;
+                    gradient[3*v+2] = 0.0;
                 }
 
-                Eigen::MatrixXd H_small = Eigen::MatrixXd(9,9);
-                for(int i = 0; i < 9; ++i) {
-                    for(int j = 0; j < 9; ++j) {
+                // Compute ARAP Gradient
+                Eigen::SparseMatrix<double> A(3*mesh.vertices.size(), 3*mesh.vertices.size());
+                MySparseMatrix A_mine( 3*mesh.vertices.size() , 3*mesh.vertices.size() );
+                Eigen::VectorXd b(3*mesh.vertices.size());
+                for(unsigned int t = 0; t < 3*mesh.vertices.size(); ++t) {
+                    b[t] = 0.0;
+                }
+                for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
+                    for(unsigned int it = 0; it < mesh.tetras[t].size(); ++it) {
+                        for(unsigned int jt = 0; jt < mesh.tetras[t].size(); ++jt) {
+                            //                            for(unsigned int it = 0; it < 1; ++it) { // THIS GIVES WORSE RESULTS
+                            //                                for(unsigned int jt = it+1; jt < mesh.tetras[t].size(); ++jt) { // THIS GIVES WORSE RESULTS
+                            if(it != jt) {
+                                int i = mesh.tetras[t][it];
+                                int j = mesh.tetras[t][jt];
+
+                                A_mine(3*i, 3*i) += 1;
+                                A_mine(3*i+1, 3*i+1) += 1;
+                                A_mine(3*i+2, 3*i+2) += 1;
+
+                                A_mine(3*j, 3*j) += 1;
+                                A_mine(3*j+1, 3*j+1) += 1;
+                                A_mine(3*j+2, 3*j+2) += 1;
+
+                                A_mine(3*i, 3*j) += -1;
+                                A_mine(3*i+1, 3*j+1) += -1;
+                                A_mine(3*i+2, 3*j+2) += -1;
+
+                                A_mine(3*j, 3*i) += -1;
+                                A_mine(3*j+1, 3*i+1) += -1;
+                                A_mine(3*j+2, 3*i+2) += -1;
+
+                                point3d pi = tetrahedron_rotation_matrix[ t ] * mesh.vertices[ i ].pInit; //not current position, but initial position
+                                point3d pj = tetrahedron_rotation_matrix[ t ] * mesh.vertices[ j ].pInit; //not current position, but initial position
+                                b(3*i)   += pi[0]-pj[0];
+                                b(3*i+1) += pi[1]-pj[1];
+                                b(3*i+2) += pi[2]-pj[2];
+                                b(3*j)   += pj[0]-pi[0];
+                                b(3*j+1) += pj[1]-pi[1];
+                                b(3*j+2) += pj[2]-pi[2];
+                            }
+                        }
+                    }
+                }
+
+                // fix the first vertex:
+                {
+                    A_mine(0,0) += 1;
+                    A_mine(1,1) += 1;
+                    A_mine(2,2) += 1;
+                    b[0] += mesh.vertices[0].pInit[0];
+                    b[1] += mesh.vertices[0].pInit[1];
+                    b[2] += mesh.vertices[0].pInit[2];
+                }
+
+                A_mine.convertToEigenFormat(A);
+                gradient = 2*A*pb - 2*b;
+
+                std::cout << "\t finished computing the ARAP Hessian and gradient" << std::endl;
+
+                Eigen::SparseMatrix<double> polycubeHessianSparse(3*mesh.vertices.size(), 3*mesh.vertices.size());
+                MySparseMatrix polycubeHessian( 3*mesh.vertices.size() , 3*mesh.vertices.size() );
+                for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
+                    int i0 = mesh.triangles[t][0];
+                    int i1 = mesh.triangles[t][1];
+                    int i2 = mesh.triangles[t][2];
+                    std::vector<int> indexes = {3*i0, 3*i0+1, 3*i0+2, 3*i1, 3*i1+1, 3*i1+2, 3*i2, 3*i2+1, 3*i2+2}; // x0, y0, z0 , x1, y1, z1, x2, y2, z2
+                    point3d p0 = point3d(pb(3*i0), pb(3*i0+1), pb(3*i0+2));
+                    point3d p1 = point3d(pb(3*i1), pb(3*i1+1), pb(3*i1+2));
+                    point3d p2 = point3d(pb(3*i2), pb(3*i2+1), pb(3*i2+2));
+                    point3d n = point3d::cross( p1-p0 , p2-p0 );
+                    double c0 = n[0];
+                    double c1 = n[1];
+                    double c2 = n[2];
+                    double c0b = std::sqrt(c0*c0 + epsilon);
+                    double c1b = std::sqrt(c1*c1 + epsilon);
+                    double c2b = std::sqrt(c2*c2 + epsilon);
+
+                    Eigen::VectorXd grad_c0(9);
+                    Eigen::VectorXd grad_c1(9);
+                    Eigen::VectorXd grad_c2(9);
+                    for( unsigned int tgrad = 0 ; tgrad < 9 ; ++tgrad ) {
+                        grad_c0(tgrad) = 0;
+                        grad_c1(tgrad) = 0;
+                        grad_c2(tgrad) = 0;
+                    }
+                    grad_c2(0) = p1[1] - p2[1]; //y1-y2
+                    grad_c2(1) = p2[0] - p1[0]; //x2-x1
+                    grad_c2(3) = p2[1] - p0[1]; //y2-y0
+                    grad_c2(4) = p0[0] - p2[0]; //x0-x2
+                    grad_c2(6) = p0[1] - p1[1]; //y0-y2
+                    grad_c2(7) = p1[0] - p0[0]; //x1-x0
+
+                    grad_c0(1) = p1[2] - p2[2]; //z1-z2
+                    grad_c0(2) = p2[1] - p1[1]; //y2-y1
+                    grad_c0(4) = p2[2] - p0[2]; //z2-z0
+                    grad_c0(5) = p0[1] - p2[1]; //y0-y2
+                    grad_c0(7) = p0[2] - p1[2]; //z0-z1
+                    grad_c0(8) = p1[1] - p0[1]; //y1-y0
+
+                    grad_c1(0) = p2[2] - p1[2]; //z2-z1
+                    grad_c1(2) = p1[0] - p2[0]; //x1-x2
+                    grad_c1(3) = p0[2] - p2[2]; //z0-z2
+                    grad_c1(5) = p2[0] - p0[0]; //x2-x0
+                    grad_c1(6) = p1[2] - p0[2]; //z1-z0
+                    grad_c1(8) = p0[0] - p1[0]; //x0-x1
+
+                    for(int i = 0; i < 9; ++i) {
+                        gradient(indexes[i]) += alpha * (c0/c0b * grad_c0(i) + c1/c1b * grad_c1(i) + c2/c2b * grad_c2(i));
+                    }
+
+                    Eigen::MatrixXd H_small = Eigen::MatrixXd(9,9);
+                    for(int i = 0; i < 9; ++i) {
+                        for(int j = 0; j < 9; ++j) {
                             H_small(i,j) = 0.0;
+                        }
+                    }
+                    //Compute c0, c1 and c2 hessian's first part
+                    H_small += epsilon * (1/(c0b*c0b*c0b) * grad_c0 * grad_c0.transpose() + 1/(c1b*c1b*c1b) * grad_c1 * grad_c1.transpose() + 1/(c2b*c2b*c2b) * grad_c2 * grad_c2.transpose());
+                    //Compute c0 hessian's second part
+                    H_small(1,5) += c0/c0b;
+                    H_small(5,1) += c0/c0b;
+                    H_small(1,8) += -c0/c0b;
+                    H_small(8,1) += -c0/c0b;
+
+                    H_small(4,2) += -c0/c0b;
+                    H_small(2,4) += -c0/c0b;
+                    H_small(4,8) += c0/c0b;
+                    H_small(8,4) += c0/c0b;
+
+                    H_small(7,2) += c0/c0b;
+                    H_small(2,7) += c0/c0b;
+                    H_small(7,5) += -c0/c0b;
+                    H_small(5,7) += -c0/c0b;
+
+                    //Compute c1 hessian's second part
+                    H_small(2,3) += c1/c1b;
+                    H_small(3,2) += c1/c1b;
+                    H_small(2,6) += -c1/c1b;
+                    H_small(6,2) += -c1/c1b;
+
+                    H_small(5,0) += -c1/c1b;
+                    H_small(0,5) += -c1/c1b;
+                    H_small(5,6) += c1/c1b;
+                    H_small(6,5) += c1/c1b;
+
+                    H_small(8,0) += c1/c1b;
+                    H_small(0,8) += c1/c1b;
+                    H_small(8,3) += -c1/c1b;
+                    H_small(3,8) += -c1/c1b;
+
+                    //Compute c2 hessian's second part
+                    H_small(0,4) += c2/c2b;
+                    H_small(4,0) += c2/c2b;
+                    H_small(0,7) += -c2/c2b;
+                    H_small(7,0) += -c2/c2b;
+
+                    H_small(3,1) += -c2/c2b;
+                    H_small(1,3) += -c2/c2b;
+                    H_small(3,7) += c2/c2b;
+                    H_small(7,3) += c2/c2b;
+
+                    H_small(6,1) += c2/c2b;
+                    H_small(1,6) += c2/c2b;
+                    H_small(6,4) += -c2/c2b;
+                    H_small(4,6) += -c2/c2b;
+
+                    for(int i = 0; i < 9; ++i) {
+                        for(int j = 0; j < 9; ++j) {
+                            polycubeHessian(indexes[i],indexes[j]) += H_small(i,j);
+                        }
                     }
                 }
-                //Compute c0, c1 and c2 hessian's first part
-                H_small += epsilon * (1/(c0b*c0b*c0b) * grad_c0 * grad_c0.transpose() + 1/(c1b*c1b*c1b) * grad_c1 * grad_c1.transpose() + 1/(c2b*c2b*c2b) * grad_c2 * grad_c2.transpose());
-                //Compute c0 hessian's second part
-                H_small(1,5) += c0/c0b;
-                H_small(5,1) += c0/c0b;
-                H_small(1,8) += -c0/c0b;
-                H_small(8,1) += -c0/c0b;
 
-                H_small(4,2) += -c0/c0b;
-                H_small(2,4) += -c0/c0b;
-                H_small(4,8) += c0/c0b;
-                H_small(8,4) += c0/c0b;
+                std::cout << "\t finished computing the normal L1 norm Hessian and gradient" << std::endl;
+/*
+                // Compute the Aeij (for the normal alignment gradient)
+                Eigen::VectorXd edgeWeights(edges.size());  // A(eij,X)
+                Eigen::VectorXd neighboorsArea(mesh.triangles.size());
+                for (unsigned int i=0; i< mesh.triangles.size() ; i++ ){
+                    neighboorsArea[i]=0;
+                }
+                for (auto it=edges.begin(); it !=edges.end(); it++) {
+                    int i = it->second.first;
+                    int j = it->second.second;
+                    neighboorsArea[i] += area(j);
+                    neighboorsArea[j] += area(i);
+                }
+                int ind=0;
+                for (auto it=edges.begin(); it !=edges.end(); it++) {
+                    int i = it->second.first;
+                    int j = it->second.second;
 
-                H_small(7,2) += c0/c0b;
-                H_small(2,7) += c0/c0b;
-                H_small(7,5) += -c0/c0b;
-                H_small(5,7) += -c0/c0b;
+                    float gammaij = area(j)/neighboorsArea(i);
+                    float gammaji = area(i)/neighboorsArea(j);
+                    edgeWeights[ind]= gammaij*area(i) + gammaji*area(j);
+                    ind ++;
+                }
+                // Compute normal alignment gradient
+                ind=0;
+                for (auto it=edges.begin(); it !=edges.end(); it++) {
+                    int i = it->second.first;
+                    int j = it->second.second;
+                    float airei = area(i);
+                    float airej=area(j);
+                    float Aeij = edgeWeights[ind];
 
-                //Compute c1 hessian's second part
-                H_small(2,3) += c1/c1b;
-                H_small(3,2) += c1/c1b;
-                H_small(2,6) += -c1/c1b;
-                H_small(6,2) += -c1/c1b;
+                    unsigned int indA,indB,indC,indD;
+                    Triangle Ti = mesh.triangles[i];
+                    Triangle Tj = mesh.triangles[j];
+                    int temp;
+                    for(int k=0; k<3; k++) {
+                        if(not(isInTriangle(Ti.corners[k], Tj))){
+                            indC=Ti.corners[k];
+                            temp=k;
+                        }
+                    }
+                    indA = Ti.corners[((temp+1)%3)];
+                    indB = Ti.corners[((temp+2)%3)];
+                    for(int k=0; k<3; k++) {
+                        if(not(isInTriangle(Tj.corners[k], Ti))){
+                            indD=Ti.corners[k];
+                        }
+                    }
+                    point3d pA = mesh.vertices[indA];
+                    point3d pB = mesh.vertices[indB];
+                    point3d pC = mesh.vertices[indC];
+                    point3d pD = mesh.vertices[indD];
 
-                H_small(5,0) += -c1/c1b;
-                H_small(0,5) += -c1/c1b;
-                H_small(5,6) += c1/c1b;
-                H_small(6,5) += c1/c1b;
 
-                H_small(8,0) += c1/c1b;
-                H_small(0,8) += c1/c1b;
-                H_small(8,3) += -c1/c1b;
-                H_small(3,8) += -c1/c1b;
+                    point3d ni = point3d::cross(pB-pA , pC-pA);
+                    point3d nj = point3d::cross(pD-pA , pB-pA);
+                    std::cout<<"before: "<<gradient[indA*3+0]<<std::endl;
+                    gradient[indA*3+0] += beta*2*(Aeij/totArea)* (
+                                  (ni.y()-nj.y())*( (pC.z()-pB.z())/airei +  (pD.z()-pB.z())/airej)
+                                + (ni.z()-nj.z())*( (-pC.y()+pB.y())/airei +  (-pD.y()+pB.y())/airej)   );
+                    std::cout<<"after: "<<gradient[indA*3+0]<<std::endl;
+                    gradient[indA*3+1] += beta*2*(Aeij/totArea)* (
+                                  (ni.x()-nj.x())*( (-pC.z()+pB.z())/airei +  (-pD.z()+pB.z())/airej)
+                                + (ni.z()-nj.z())*( (pC.x()-pB.x())/airei +  (pD.x()-pB.x())/airej)   );
+                    gradient[indA*3+2] += beta*2*(Aeij/totArea)* (
+                                  (ni.x()-nj.x())*( (pC.y()-pB.y())/airei +  (pD.y()-pB.y())/airej)
+                                + (ni.y()-nj.y())*( (-pC.x()+pB.x())/airei +  (-pD.x()+pB.x())/airej)   );
 
-                //Compute c2 hessian's second part
-                H_small(0,4) += c2/c2b;
-                H_small(4,0) += c2/c2b;
-                H_small(0,7) += -c2/c2b;
-                H_small(7,0) += -c2/c2b;
+                    gradient[indB*3+0] += -beta*2*(Aeij/totArea)* (
+                                  (ni.y()-nj.y())*( (pC.z()-pA.z())/airei +  (pD.z()-pA.z())/airej)
+                                + (ni.z()-nj.z())*( (-pC.y()+pA.y())/airei +  (-pD.y()+pA.y())/airej)   );
+                    gradient[indB*3+1] += -beta*2*(Aeij/totArea)* (
+                                  (ni.x()-nj.x())*( (-pC.z()+pA.z())/airei +  (-pD.z()+pA.z())/airej)
+                                + (ni.z()-nj.z())*( (pC.x()-pA.x())/airei +  (pD.x()-pA.x())/airej)   );
+                    gradient[indB*3+2] += -beta*2*(Aeij/totArea)* (
+                                  (ni.x()-nj.x())*( (pC.y()-pA.y())/airei +  (pD.y()-pA.y())/airej)
+                                + (ni.y()-nj.y())*( (-pC.x()+pA.x())/airei +  (-pD.x()+pA.x())/airej)   );
 
-                H_small(3,1) += -c2/c2b;
-                H_small(1,3) += -c2/c2b;
-                H_small(3,7) += c2/c2b;
-                H_small(7,3) += c2/c2b;
+                    gradient[indC*3+0] += beta*2*(Aeij/totArea)* (
+                                  (ni.y()-nj.y())*( (pB.z()-pA.z())/airei )
+                                + (ni.z()-nj.z())*( (pA.y()-pB.y())/airei )   );
+                    gradient[indC*3+1] += beta*2*(Aeij/totArea)* (
+                                  (ni.x()-nj.x())*( (pA.z()-pB.z())/airei )
+                                + (ni.z()-nj.z())*( (pB.x()-pA.x())/airei )   );
+                    gradient[indC*3+2] += beta*2*(Aeij/totArea)* (
+                                  (ni.x()-nj.x())*( (pB.y()-pA.y())/airei )
+                                + (ni.y()-nj.y())*( (pA.x()-pB.x())/airei )   );
 
-                H_small(6,1) += c2/c2b;
-                H_small(1,6) += c2/c2b;
-                H_small(6,4) += -c2/c2b;
-                H_small(4,6) += -c2/c2b;
+                    gradient[indD*3+0] += beta*2*(Aeij/totArea)* (
+                                  (ni.y()-nj.y())*( (pB.z()-pA.z())/airej )
+                                + (ni.z()-nj.z())*( (pA.y()-pB.y())/airej )   );
+                    gradient[indD*3+1] += beta*2*(Aeij/totArea)* (
+                                  (ni.x()-nj.x())*( (pA.z()-pB.z())/airej )
+                                + (ni.z()-nj.z())*( (pB.x()-pA.x())/airej )   );
+                    gradient[indD*3+2] += beta*2*(Aeij/totArea)* (
+                                  (ni.x()-nj.x())*( (pB.y()-pA.y())/airej )
+                                + (ni.y()-nj.y())*( (pA.x()-pB.x())/airej )   );
 
-                for(int i = 0; i < 9; ++i) {
-                    for(int j = 0; j < 9; ++j) {
-                        polycubeHessian(indexes[i],indexes[j]) += H_small(i,j);
+
+
+                    ind ++;
+                }
+*/
+
+
+
+                if(false){  //Gradient Descent
+                    pb = pb - h*gradient;
+                }
+                else //or Newton Descent
+                {
+                    if( use_triangle_area_constraints ) {
+                        MySparseMatrix LHSsystem_mine( 3*mesh.vertices.size() + mesh.triangles.size() , 3*mesh.vertices.size() + mesh.triangles.size() );
+                        Eigen::VectorXd RHSsystem( 3*mesh.vertices.size() + mesh.triangles.size() );
+                        for( unsigned int coord = 0 ; coord < 3*mesh.vertices.size() ; ++coord ) RHSsystem[coord] = - gradient[coord];
+
+                        // set energy Hessian to 2*A + alpha*polycubeHessian:
+                        for( unsigned int r = 0 ; r < 3*mesh.vertices.size() ; ++r ) {
+                            std::map< unsigned int , double > const & row_r = A_mine.getRow(r);
+                            for( std::map< unsigned int , double >::const_iterator it = row_r.begin() ; it != row_r.end() ; ++it ) {
+                                unsigned int c = it->first;
+                                double val_rc = it->second;
+                                LHSsystem_mine( r , c ) += 2 * val_rc;
+                            }
+                        }
+                        for( unsigned int r = 0 ; r < 3*mesh.vertices.size() ; ++r ) {
+                            std::map< unsigned int , double > const & row_r = polycubeHessian.getRow(r);
+                            for( std::map< unsigned int , double >::const_iterator it = row_r.begin() ; it != row_r.end() ; ++it ) {
+                                unsigned int c = it->first;
+                                double val_rc = it->second;
+                                LHSsystem_mine( r , c ) += alpha * val_rc;
+                            }
+                        }
+
+                        // compute Jacobian of the constraints, and set appropriate values:
+                        for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
+                            int i0 = mesh.triangles[t][0];
+                            int i1 = mesh.triangles[t][1];
+                            int i2 = mesh.triangles[t][2];
+                            std::vector<int> indexes = {3*i0, 3*i0+1, 3*i0+2, 3*i1, 3*i1+1, 3*i1+2, 3*i2, 3*i2+1, 3*i2+2}; // x0, y0, z0 , x1, y1, z1, x2, y2, z2
+                            point3d p0 = point3d(pb(3*i0), pb(3*i0+1), pb(3*i0+2));
+                            point3d p1 = point3d(pb(3*i1), pb(3*i1+1), pb(3*i1+2));
+                            point3d p2 = point3d(pb(3*i2), pb(3*i2+1), pb(3*i2+2));
+                            point3d n = point3d::cross( p1-p0 , p2-p0 );
+                            point3d nOriginal = point3d::cross( mesh.vertices[i1].pInit-mesh.vertices[i0].pInit , mesh.vertices[i2].pInit-mesh.vertices[i0].pInit );
+                            double c0 = n[0];
+                            double c1 = n[1];
+                            double c2 = n[2];
+
+                            Eigen::VectorXd grad_c0(9);
+                            Eigen::VectorXd grad_c1(9);
+                            Eigen::VectorXd grad_c2(9);
+                            for( unsigned int tgrad = 0 ; tgrad < 9 ; ++tgrad ) {
+                                grad_c0(tgrad) = 0;
+                                grad_c1(tgrad) = 0;
+                                grad_c2(tgrad) = 0;
+                            }
+                            grad_c2(0) = p1[1] - p2[1]; //y1-y2
+                            grad_c2(1) = p2[0] - p1[0]; //x2-x1
+                            grad_c2(3) = p2[1] - p0[1]; //y2-y0
+                            grad_c2(4) = p0[0] - p2[0]; //x0-x2
+                            grad_c2(6) = p0[1] - p1[1]; //y0-y2
+                            grad_c2(7) = p1[0] - p0[0]; //x1-x0
+
+                            grad_c0(1) = p1[2] - p2[2]; //z1-z2
+                            grad_c0(2) = p2[1] - p1[1]; //y2-y1
+                            grad_c0(4) = p2[2] - p0[2]; //z2-z0
+                            grad_c0(5) = p0[1] - p2[1]; //y0-y2
+                            grad_c0(7) = p0[2] - p1[2]; //z0-z1
+                            grad_c0(8) = p1[1] - p0[1]; //y1-y0
+
+                            grad_c1(0) = p2[2] - p1[2]; //z2-z1
+                            grad_c1(2) = p1[0] - p2[0]; //x1-x2
+                            grad_c1(3) = p0[2] - p2[2]; //z0-z2
+                            grad_c1(5) = p2[0] - p0[0]; //x2-x0
+                            grad_c1(6) = p1[2] - p0[2]; //z1-z0
+                            grad_c1(8) = p0[0] - p1[0]; //x0-x1
+
+                            for(int i = 0; i < 9; ++i) {
+                                LHSsystem_mine( 3*mesh.vertices.size() + t , indexes[i] ) += 2*(c0 * grad_c0(i) + c1 * grad_c1(i) + c2 * grad_c2(i));
+                                LHSsystem_mine( indexes[i] , 3*mesh.vertices.size() + t ) += 2*(c0 * grad_c0(i) + c1 * grad_c1(i) + c2 * grad_c2(i));
+                            }
+
+                            RHSsystem[ 3*mesh.vertices.size() + t ] = - ( n.sqrnorm() - nOriginal.sqrnorm() );
+                        }
+
+                        // add an epsilon regularization on the diagonal:
+                        {
+                            double epsilonReg = 0.000000001;
+                            for( unsigned int r = 0 ; r < 3*mesh.vertices.size() + mesh.triangles.size() ; ++r )
+                                LHSsystem_mine( r , r ) += epsilonReg;
+                        }
+
+                        std::cout << "\t finished computing the LHS and RHS" << std::endl;
+
+                        Eigen::SparseMatrix< double > LHSsystem;
+                        LHSsystem_mine.convertToEigenFormat( LHSsystem );
+
+                        std::cout << "\t finished converting the LHS to Eigen's format" << std::endl;
+
+                        //                        Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double> > cg;
+                        //                        std::cout << "\t\t cg.compute(LHSsystem)" << std::endl;
+                        //                        cg.compute(LHSsystem);
+                        //                        std::cout << "\t\t cg.compute(LHSsystem) OK" << std::endl;
+                        //                        std::cout << "\t\t deltaX = cg.solve(RHSsystem)" << std::endl;
+                        //                        Eigen::VectorXd deltaX = cg.solve(RHSsystem);
+                        //                        std::cout << "\t\t deltaX = cg.solve(RHSsystem) OK" << std::endl;
+
+
+                        Eigen::SimplicialLDLT< Eigen::SparseMatrix<double> > _LHS_LDLT;
+                        _LHS_LDLT.analyzePattern( LHSsystem );
+                        _LHS_LDLT.compute( LHSsystem );
+                        Eigen::VectorXd deltaX = _LHS_LDLT.solve( RHSsystem );
+
+                        std::cout << "\t finished solving the system" << std::endl;
+
+                        for( unsigned int coord = 0 ; coord < 3 * mesh.vertices.size() ; ++coord ) {
+                            pb[coord] += deltaX[coord];
+                        }
+                        std::cout << "\t finished update" << std::endl << std::endl;
+                    }
+                    else {
+                        polycubeHessian.convertToEigenFormat(polycubeHessianSparse);
+                        Eigen::SparseMatrix<double> Hessian = 2*A + alpha * polycubeHessianSparse;
+                        Eigen::SimplicialLDLT< Eigen::SparseMatrix<double> > _Hessian_LDLT;
+
+                        _Hessian_LDLT.analyzePattern( Hessian );
+                        _Hessian_LDLT.compute( Hessian );
+                        pb = pb - _Hessian_LDLT.solve( gradient );
                     }
                 }
-            }
 
+                //Optimize Rotation matrices
+                for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
+                    Eigen::Matrix3d S = Eigen::Matrix3d(3,3);
+                    for( int i = 0 ; i < 3 ; ++i )
+                        for( int j = 0 ; j < 3 ; ++j )
+                            S(i,j) = 0.0;
 
-            // Compute the Aeij (for the normal alignment gradient)
-            Eigen::VectorXd edgeWeights(edges.size());  // A(eij,X)
-            Eigen::VectorXd neighboorsArea(mesh.triangles.size());
-            for (unsigned int i=0; i< mesh.triangles.size() ; i++ ){
-                neighboorsArea[i]=0;
-            }
-            for (auto it=edges.begin(); it !=edges.end(); it++) {
-                int i = it->second.first;
-                int j = it->second.second;
-                neighboorsArea[i] += area(j);
-                neighboorsArea[j] += area(i);
-            }
-            int ind=0;
-            for (auto it=edges.begin(); it !=edges.end(); it++) {
-                int i = it->second.first;
-                int j = it->second.second;
-
-                float gammaij = area(j)/neighboorsArea(i);
-                float gammaji = area(i)/neighboorsArea(j);
-                edgeWeights[ind]= gammaij*area(i) + gammaji*area(j);
-                ind ++;
-            }
-            // Compute normal alignment gradient
-            ind=0;
-            for (auto it=edges.begin(); it !=edges.end(); it++) {
-                int i = it->second.first;
-                int j = it->second.second;
-                float airei = area(i);
-                float airej=area(j);
-                float Aeij = edgeWeights[ind];
-
-                unsigned int indA,indB,indC,indD;
-                Triangle Ti = mesh.triangles[i];
-                Triangle Tj = mesh.triangles[j];
-                int temp;
-                for(int k=0; k<3; k++) {
-                    if(not(isInTriangle(Ti.corners[k], Tj))){
-                        indC=Ti.corners[k];
-                        temp=k;
+                    //                    for(unsigned int it = 0; it < 1; ++it) {
+                    //                        for(unsigned int jt = it+1; jt < mesh.tetras[t].size(); ++jt) {
+                    for(unsigned int it = 0; it < mesh.tetras[t].size(); ++it) {
+                        for(unsigned int jt = 0; jt < mesh.tetras[t].size(); ++jt) {
+                            if( it != jt ) {
+                                int i = mesh.tetras[t][it];
+                                int j = mesh.tetras[t][jt];
+                                Eigen::Vector3d ei_current (pb(3*i)-pb(3*j), pb(3*i+1)-pb(3*j+1), pb(3*i+2)-pb(3*j+2));
+                                //   point3d pei = tetrahedron_rotation_matrix[ t ] * mesh.vertices[ i ].pInit - tetrahedron_rotation_matrix[ t ] * mesh.vertices[ j ].pInit;
+                                point3d pei = mesh.vertices[ i ].pInit - mesh.vertices[ j ].pInit;
+                                Eigen::Vector3d ei_init (pei[0], pei[1], pei[2]);
+                                S += ei_current * ei_init.transpose();
+                            }
+                        }
+                    }
+                    Eigen::JacobiSVD<Eigen::Matrix3d> svd(S,  Eigen::ComputeFullU | Eigen::ComputeFullV);
+                    Eigen::Matrix3d U = svd.matrixU();
+                    Eigen::Matrix3d V = svd.matrixV();
+                    Eigen::Matrix3d product = U*V.transpose();
+                    Eigen::Matrix3d R = U * Eigen::Vector3d(1, 1, product.determinant()).asDiagonal() * V.transpose();
+                    for(unsigned int i = 0; i < 3; i++) {
+                        for(unsigned int j = 0; j < 3; j++) {
+                            tetrahedron_rotation_matrix[ t ](i, j) = R(i, j);
+                        }
                     }
                 }
-                indA = Ti.corners[((temp+1)%3)];
-                indB = Ti.corners[((temp+2)%3)];
-                for(int k=0; k<3; k++) {
-                    if(not(isInTriangle(Tj.corners[k], Ti))){
-                        indD=Ti.corners[k];
-                    }
-                }
-                point3d pA = mesh.vertices[indA];
-                point3d pB = mesh.vertices[indB];
-                point3d pC = mesh.vertices[indC];
-                point3d pD = mesh.vertices[indD];
 
-
-                point3d ni = point3d::cross(pB-pA , pC-pA);
-                point3d nj = point3d::cross(pD-pA , pB-pA);
-
-                gradient[indA*3+0] += beta*2*(Aeij/totArea)* (
-                              (ni.y()-nj.y())*( (pC.z()-pB.z())/airei +  (pD.z()-pB.z())/airej)
-                            + (ni.z()-nj.z())*( (-pC.y()+pB.y())/airei +  (-pD.y()+pB.y())/airej)   );
-                gradient[indA*3+1] += beta*2*(Aeij/totArea)* (
-                              (ni.x()-nj.x())*( (-pC.z()+pB.z())/airei +  (-pD.z()+pB.z())/airej)
-                            + (ni.z()-nj.z())*( (pC.x()-pB.x())/airei +  (pD.x()-pB.x())/airej)   );
-                gradient[indA*3+2] += beta*2*(Aeij/totArea)* (
-                              (ni.x()-nj.x())*( (pC.y()-pB.y())/airei +  (pD.y()-pB.y())/airej)
-                            + (ni.y()-nj.y())*( (-pC.x()+pB.x())/airei +  (-pD.x()+pB.x())/airej)   );
-
-                gradient[indB*3+0] += -beta*2*(Aeij/totArea)* (
-                              (ni.y()-nj.y())*( (pC.z()-pA.z())/airei +  (pD.z()-pA.z())/airej)
-                            + (ni.z()-nj.z())*( (-pC.y()+pA.y())/airei +  (-pD.y()+pA.y())/airej)   );
-                gradient[indB*3+1] += -beta*2*(Aeij/totArea)* (
-                              (ni.x()-nj.x())*( (-pC.z()+pA.z())/airei +  (-pD.z()+pA.z())/airej)
-                            + (ni.z()-nj.z())*( (pC.x()-pA.x())/airei +  (pD.x()-pA.x())/airej)   );
-                gradient[indB*3+2] += -beta*2*(Aeij/totArea)* (
-                              (ni.x()-nj.x())*( (pC.y()-pA.y())/airei +  (pD.y()-pA.y())/airej)
-                            + (ni.y()-nj.y())*( (-pC.x()+pA.x())/airei +  (-pD.x()+pA.x())/airej)   );
-
-                gradient[indC*3+0] += beta*2*(Aeij/totArea)* (
-                              (ni.y()-nj.y())*( (pB.z()-pA.z())/airei )
-                            + (ni.z()-nj.z())*( (pA.y()-pB.y())/airei )   );
-                gradient[indC*3+1] += beta*2*(Aeij/totArea)* (
-                              (ni.x()-nj.x())*( (pA.z()-pB.z())/airei )
-                            + (ni.z()-nj.z())*( (pB.x()-pA.x())/airei )   );
-                gradient[indC*3+2] += beta*2*(Aeij/totArea)* (
-                              (ni.x()-nj.x())*( (pB.y()-pA.y())/airei )
-                            + (ni.y()-nj.y())*( (pA.x()-pB.x())/airei )   );
-
-                gradient[indD*3+0] += beta*2*(Aeij/totArea)* (
-                              (ni.y()-nj.y())*( (pB.z()-pA.z())/airej )
-                            + (ni.z()-nj.z())*( (pA.y()-pB.y())/airej )   );
-                gradient[indD*3+1] += beta*2*(Aeij/totArea)* (
-                              (ni.x()-nj.x())*( (pA.z()-pB.z())/airej )
-                            + (ni.z()-nj.z())*( (pB.x()-pA.x())/airej )   );
-                gradient[indD*3+2] += beta*2*(Aeij/totArea)* (
-                              (ni.x()-nj.x())*( (pB.y()-pA.y())/airej )
-                            + (ni.y()-nj.y())*( (pA.x()-pB.x())/airej )   );
-
-
-
-                ind ++;
             }
 
 
-
-
-            if(false){  //Gradient Descent
-                pb = pb - h*gradient;
+            // Update Positions
+            for( unsigned int v = 0 ; v < mesh.vertices.size() ; ++v ) {
+                point3d & p = mesh.vertices[ v ].p;
+                p[0] = pb(3*v);
+                p[1] = pb(3*v+1);
+                p[2] = pb(3*v+2);
             }
-
-            else //or Newton Descent
-            {
-                polycubeHessian.convertToEigenFormat(polycubeHessianSparce);
-                Eigen::SimplicialLDLT< Eigen::SparseMatrix<double> > _Hessian_LDLT;
-
-                _Hessian_LDLT.analyzePattern( 2*A + alpha * polycubeHessianSparce);
-                _Hessian_LDLT.compute( 2*A + alpha * polycubeHessianSparce);
-                pb = pb - _Hessian_LDLT.solve( gradient );
-            }
-
-            //Optimize Rotation matrices
-            for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
-                Eigen::Matrix3d S = Eigen::Matrix3d(3,3);
-                for(unsigned int it = 0; it < mesh.tetras[t].size(); ++it) {
-                    for(unsigned int jt = it+1; jt < mesh.tetras[t].size(); ++jt) {
-                        int i = mesh.tetras[t][it];
-                        int j = mesh.tetras[t][jt];
-                        Eigen::Vector3d eip (pb(3*i)-pb(3*j), pb(3*i+1)-pb(3*j+1), pb(3*i+2)-pb(3*j+2));
-                        point3d pei = tetrahedron_rotation_matrix[ t ] * mesh.vertices[ i ].pInit - tetrahedron_rotation_matrix[ t ] * mesh.vertices[ j ].pInit;
-                        Eigen::Vector3d ei (pei[0], pei[1], pei[2]);
-                        S += eip * ei.transpose();
-                    }
-                }
-                Eigen::JacobiSVD<Eigen::Matrix3d> svd(S,  Eigen::ComputeFullU | Eigen::ComputeFullV);
-                Eigen::Matrix3d U = svd.matrixU();
-                Eigen::Matrix3d V = svd.matrixV();
-                Eigen::Matrix3d product = U*V.transpose();
-                Eigen::Matrix3d R = U * Eigen::Vector3d(1, 1, product.determinant()).asDiagonal() * V.transpose();
-                for(unsigned int i = 0; i < 3; i++) {
-                    for(unsigned int j = 0; j < 3; j++) {
-                        tetrahedron_rotation_matrix[ t ](i, j) = R(i, j);
-                    }
-                }
-            }
-
         }
 
+        if( increase_alpha )
+            alpha *= 1.1;
 
-        // Update Positions
-        for( unsigned int t = 0 ; t < mesh.vertices.size() ; ++t ) {
-            point3d & p = mesh.vertices[ t ].p;
-            p[0] = pb(3*t);
-            p[1] = pb(3*t+1);
-            p[2] = pb(3*t+2);
-        }
-        }
         update();
     }
 };
