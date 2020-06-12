@@ -99,8 +99,9 @@ class MyViewer : public QGLViewer , public QOpenGLFunctions_3_0
     unsigned int step_by_alpha_increase = 50;
 
     unsigned int rotation_opti_by_step = 1;
-    unsigned int total_steps = 105;
+    unsigned int total_steps = 1;
 
+    bool useNormalAlignment = false;
     bool use_triangle_area_constraints = true;
 
     std::vector< mat33d > tetrahedron_rotation_matrix;
@@ -297,14 +298,22 @@ public slots:
                     bb = point3d::min(bb , mesh.vertices[v]);
                     BB = point3d::max(BB , mesh.vertices[v]);
                 }
+                meshLength = (BB-bb).norm();
+                // Adjust mesh size
+                for( unsigned int v = 0 ; v < mesh.vertices.size() ; ++v ) {
+                    mesh.vertices[v].pInit *= (500/meshLength);
+                    mesh.vertices[v].p *= (500/meshLength);
+                }
+                bb *= (500/meshLength);
+                BB *= (500/meshLength);
+                meshLength = 500; //500 is the size of the hand model, which works
+
                 adjustCamera(bb,BB);
 
                 tetrahedron_rotation_matrix.resize( mesh.tetras.size() );
                 for( unsigned int t = 0 ; t < mesh.tetras.size() ; ++t ) {
                     tetrahedron_rotation_matrix[ t ].setIdentity();
                 }
-
-                meshLength = (BB-bb).norm();
 
                 update();
                 std::cout << "Opened " << fileName.toStdString() << " that contains " << mesh.tetras.size() << " tetrahedra, " << mesh.triangles.size()
@@ -423,16 +432,6 @@ public slots:
     }
 
     void work(){
-
-        // Compute an approximate size of the mesh
-        point3d bb(FLT_MAX,FLT_MAX,FLT_MAX) , BB(-FLT_MAX,-FLT_MAX,-FLT_MAX);
-        for( unsigned int v = 0 ; v < mesh.vertices.size() ; ++v ) {
-            mesh.vertices[v].pInit = mesh.vertices[v].p;
-            bb = point3d::min(bb , mesh.vertices[v]);
-            BB = point3d::max(BB , mesh.vertices[v]);
-        }
-        float meshSize = fmax(fmax(BB.x()-bb.x(),BB.y()-bb.y()), BB.z()-bb.z()) / 500;
-
 
         // Calcul once the mesh total surface
         float totArea = 0;
@@ -682,115 +681,116 @@ public slots:
 
                 std::cout << "\t finished computing the normal L1 norm Hessian and gradient" << std::endl;
 
-                // Compute the Aeij (for the normal alignment gradient)
-                Eigen::VectorXd edgeWeights(edges.size());  // A(eij,X)
-                Eigen::VectorXd neighboorsArea(mesh.triangles.size());
-                for (unsigned int i=0; i< mesh.triangles.size() ; i++ ){
-                    neighboorsArea[i]=0;
-                }
-                for (auto it=edges.begin(); it !=edges.end(); it++) {
-                    int i = it->second.first;
-                    int j = it->second.second;
-                    neighboorsArea[i] += area(j);
-                    neighboorsArea[j] += area(i);
-                }
-                int ind=0;
-                for (auto it=edges.begin(); it !=edges.end(); it++) {
-                    int i = it->second.first;
-                    int j = it->second.second;
-
-                    float gammaij = area(j)/neighboorsArea(i);
-                    float gammaji = area(i)/neighboorsArea(j);
-                    edgeWeights[ind]= gammaij*area(i) + gammaji*area(j);
-                    ind ++;
-                }
-                // Compute normal alignment gradient
-                ind=0;
-                for (auto it=edges.begin(); it !=edges.end(); it++) {
-                    int i = it->second.first;
-                    int j = it->second.second;
-                    float airei = area(i);
-                    float airej=area(j);
-                    float Aeij = edgeWeights[ind];
-
-                    unsigned int indA,indB,indC,indD;
-                    Triangle Ti = mesh.triangles[i];
-                    Triangle Tj = mesh.triangles[j];
-                    int temp;
-                    for(int k=0; k<3; k++) {
-                        if(not(isInTriangle(Ti.corners[k], Tj))){
-                            indC=Ti.corners[k];
-                            temp=k;
-                        }
+                if (useNormalAlignment){
+                    // Compute the Aeij (for the normal alignment gradient)
+                    Eigen::VectorXd edgeWeights(edges.size());  // A(eij,X)
+                    Eigen::VectorXd neighboorsArea(mesh.triangles.size());
+                    for (unsigned int i=0; i< mesh.triangles.size() ; i++ ){
+                        neighboorsArea[i]=0;
                     }
-                    indA = Ti.corners[((temp+1)%3)];
-                    indB = Ti.corners[((temp+2)%3)];
-                    for(int k=0; k<3; k++) {
-                        if(not(isInTriangle(Tj.corners[k], Ti))){
-                            indD=Ti.corners[k];
-                        }
+                    for (auto it=edges.begin(); it !=edges.end(); it++) {
+                        int i = it->second.first;
+                        int j = it->second.second;
+                        neighboorsArea[i] += area(j);
+                        neighboorsArea[j] += area(i);
                     }
-                    point3d pA = mesh.vertices[indA];
-                    point3d pB = mesh.vertices[indB];
-                    point3d pC = mesh.vertices[indC];
-                    point3d pD = mesh.vertices[indD];
+                    int ind=0;
+                    for (auto it=edges.begin(); it !=edges.end(); it++) {
+                        int i = it->second.first;
+                        int j = it->second.second;
+
+                        float gammaij = area(j)/neighboorsArea(i);
+                        float gammaji = area(i)/neighboorsArea(j);
+                        edgeWeights[ind]= gammaij*area(i) + gammaji*area(j);
+                        ind ++;
+                    }
+                    // Compute normal alignment gradient
+                    ind=0;
+                    for (auto it=edges.begin(); it !=edges.end(); it++) {
+                        int i = it->second.first;
+                        int j = it->second.second;
+                        float airei = area(i);
+                        float airej=area(j);
+                        float Aeij = edgeWeights[ind];
+
+                        unsigned int indA,indB,indC,indD;
+                        Triangle Ti = mesh.triangles[i];
+                        Triangle Tj = mesh.triangles[j];
+                        int temp;
+                        for(int k=0; k<3; k++) {
+                            if(not(isInTriangle(Ti.corners[k], Tj))){
+                                indC=Ti.corners[k];
+                                temp=k;
+                            }
+                        }
+                        indA = Ti.corners[((temp+1)%3)];
+                        indB = Ti.corners[((temp+2)%3)];
+                        for(int k=0; k<3; k++) {
+                            if(not(isInTriangle(Tj.corners[k], Ti))){
+                                indD=Ti.corners[k];
+                            }
+                        }
+                        point3d pA = mesh.vertices[indA];
+                        point3d pB = mesh.vertices[indB];
+                        point3d pC = mesh.vertices[indC];
+                        point3d pD = mesh.vertices[indD];
 
 
-                    point3d ni = point3d::cross(pB-pA , pC-pA);
-                    point3d nj = point3d::cross(pD-pA , pB-pA);
+                        point3d ni = point3d::cross(pB-pA , pC-pA);
+                        point3d nj = point3d::cross(pD-pA , pB-pA);
 
-                    gradient[indA*3+0] += beta*2*(Aeij/totArea)* (
-                                  (ni.y()-nj.y())*( (pC.z()-pB.z())/airei +  (pD.z()-pB.z())/airej)
-                                + (ni.z()-nj.z())*( (-pC.y()+pB.y())/airei +  (-pD.y()+pB.y())/airej)   );
-                    gradient[indA*3+1] += beta*2*(Aeij/totArea)* (
-                                  (ni.x()-nj.x())*( (-pC.z()+pB.z())/airei +  (-pD.z()+pB.z())/airej)
-                                + (ni.z()-nj.z())*( (pC.x()-pB.x())/airei +  (pD.x()-pB.x())/airej)   );
-                    gradient[indA*3+2] += beta*2*(Aeij/totArea)* (
-                                  (ni.x()-nj.x())*( (pC.y()-pB.y())/airei +  (pD.y()-pB.y())/airej)
-                                + (ni.y()-nj.y())*( (-pC.x()+pB.x())/airei +  (-pD.x()+pB.x())/airej)   );
+                        gradient[indA*3+0] += beta*2*(Aeij/totArea)* (
+                                      (ni.y()-nj.y())*( (pC.z()-pB.z())/airei +  (pD.z()-pB.z())/airej)
+                                    + (ni.z()-nj.z())*( (-pC.y()+pB.y())/airei +  (-pD.y()+pB.y())/airej)   );
+                        gradient[indA*3+1] += beta*2*(Aeij/totArea)* (
+                                      (ni.x()-nj.x())*( (-pC.z()+pB.z())/airei +  (-pD.z()+pB.z())/airej)
+                                    + (ni.z()-nj.z())*( (pC.x()-pB.x())/airei +  (pD.x()-pB.x())/airej)   );
+                        gradient[indA*3+2] += beta*2*(Aeij/totArea)* (
+                                      (ni.x()-nj.x())*( (pC.y()-pB.y())/airei +  (pD.y()-pB.y())/airej)
+                                    + (ni.y()-nj.y())*( (-pC.x()+pB.x())/airei +  (-pD.x()+pB.x())/airej)   );
 
-                    gradient[indB*3+0] += -beta*2*(Aeij/totArea)* (
-                                  (ni.y()-nj.y())*( (pC.z()-pA.z())/airei +  (pD.z()-pA.z())/airej)
-                                + (ni.z()-nj.z())*( (-pC.y()+pA.y())/airei +  (-pD.y()+pA.y())/airej)   );
-                    gradient[indB*3+1] += -beta*2*(Aeij/totArea)* (
-                                  (ni.x()-nj.x())*( (-pC.z()+pA.z())/airei +  (-pD.z()+pA.z())/airej)
-                                + (ni.z()-nj.z())*( (pC.x()-pA.x())/airei +  (pD.x()-pA.x())/airej)   );
-                    gradient[indB*3+2] += -beta*2*(Aeij/totArea)* (
-                                  (ni.x()-nj.x())*( (pC.y()-pA.y())/airei +  (pD.y()-pA.y())/airej)
-                                + (ni.y()-nj.y())*( (-pC.x()+pA.x())/airei +  (-pD.x()+pA.x())/airej)   );
+                        gradient[indB*3+0] += -beta*2*(Aeij/totArea)* (
+                                      (ni.y()-nj.y())*( (pC.z()-pA.z())/airei +  (pD.z()-pA.z())/airej)
+                                    + (ni.z()-nj.z())*( (-pC.y()+pA.y())/airei +  (-pD.y()+pA.y())/airej)   );
+                        gradient[indB*3+1] += -beta*2*(Aeij/totArea)* (
+                                      (ni.x()-nj.x())*( (-pC.z()+pA.z())/airei +  (-pD.z()+pA.z())/airej)
+                                    + (ni.z()-nj.z())*( (pC.x()-pA.x())/airei +  (pD.x()-pA.x())/airej)   );
+                        gradient[indB*3+2] += -beta*2*(Aeij/totArea)* (
+                                      (ni.x()-nj.x())*( (pC.y()-pA.y())/airei +  (pD.y()-pA.y())/airej)
+                                    + (ni.y()-nj.y())*( (-pC.x()+pA.x())/airei +  (-pD.x()+pA.x())/airej)   );
 
-                    gradient[indC*3+0] += beta*2*(Aeij/totArea)* (
-                                  (ni.y()-nj.y())*( (pB.z()-pA.z())/airei )
-                                + (ni.z()-nj.z())*( (pA.y()-pB.y())/airei )   );
-                    gradient[indC*3+1] += beta*2*(Aeij/totArea)* (
-                                  (ni.x()-nj.x())*( (pA.z()-pB.z())/airei )
-                                + (ni.z()-nj.z())*( (pB.x()-pA.x())/airei )   );
-                    gradient[indC*3+2] += beta*2*(Aeij/totArea)* (
-                                  (ni.x()-nj.x())*( (pB.y()-pA.y())/airei )
-                                + (ni.y()-nj.y())*( (pA.x()-pB.x())/airei )   );
+                        gradient[indC*3+0] += beta*2*(Aeij/totArea)* (
+                                      (ni.y()-nj.y())*( (pB.z()-pA.z())/airei )
+                                    + (ni.z()-nj.z())*( (pA.y()-pB.y())/airei )   );
+                        gradient[indC*3+1] += beta*2*(Aeij/totArea)* (
+                                      (ni.x()-nj.x())*( (pA.z()-pB.z())/airei )
+                                    + (ni.z()-nj.z())*( (pB.x()-pA.x())/airei )   );
+                        gradient[indC*3+2] += beta*2*(Aeij/totArea)* (
+                                      (ni.x()-nj.x())*( (pB.y()-pA.y())/airei )
+                                    + (ni.y()-nj.y())*( (pA.x()-pB.x())/airei )   );
 
-                    gradient[indD*3+0] += beta*2*(Aeij/totArea)* (
-                                  (ni.y()-nj.y())*( (pB.z()-pA.z())/airej )
-                                + (ni.z()-nj.z())*( (pA.y()-pB.y())/airej )   );
-                    gradient[indD*3+1] += beta*2*(Aeij/totArea)* (
-                                  (ni.x()-nj.x())*( (pA.z()-pB.z())/airej )
-                                + (ni.z()-nj.z())*( (pB.x()-pA.x())/airej )   );
-                    gradient[indD*3+2] += beta*2*(Aeij/totArea)* (
-                                  (ni.x()-nj.x())*( (pB.y()-pA.y())/airej )
-                                + (ni.y()-nj.y())*( (pA.x()-pB.x())/airej )   );
+                        gradient[indD*3+0] += beta*2*(Aeij/totArea)* (
+                                      (ni.y()-nj.y())*( (pB.z()-pA.z())/airej )
+                                    + (ni.z()-nj.z())*( (pA.y()-pB.y())/airej )   );
+                        gradient[indD*3+1] += beta*2*(Aeij/totArea)* (
+                                      (ni.x()-nj.x())*( (pA.z()-pB.z())/airej )
+                                    + (ni.z()-nj.z())*( (pB.x()-pA.x())/airej )   );
+                        gradient[indD*3+2] += beta*2*(Aeij/totArea)* (
+                                      (ni.x()-nj.x())*( (pB.y()-pA.y())/airej )
+                                    + (ni.y()-nj.y())*( (pA.x()-pB.x())/airej )   );
 
 
 
-                    ind ++;
+                        ind ++;
+                    }
+
+
+                    for (unsigned int i=0; i<3*mesh.vertices.size(); i++) {
+                        polycubeHessian(i,i) += 1;
+                    }
+
+                    std::cout << "\t finished computing the normal alignement gradient" << std::endl;
                 }
-
-
-                for (unsigned int i=0; i<3*mesh.vertices.size(); i++) {
-                    polycubeHessian(i,i) += 1;
-                }
-
-                std::cout << "\t finished computing the normal alignement gradient" << std::endl;
-
 
                 if(false){  //Gradient Descent
                     pb = pb - h*gradient;
