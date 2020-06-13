@@ -88,20 +88,20 @@ class MyViewer : public QGLViewer , public QOpenGLFunctions_3_0
 
     Mesh mesh;
 
-    float alphaInit = 0.02f;
+    float alphaInit = 0.03f;
     float alpha = alphaInit;
-    float beta = 50.f; // for shape complexity
+    float beta = 0.02f; // for shape complexity
     float h = 0.001f; // only for gradient descent
-    float epsilon = 0.8;
+    float epsilon = 0.6;
 
 
-    bool increase_alpha = true;
+    bool increase_alpha = false;
     unsigned int step_by_alpha_increase = 50;
 
     unsigned int rotation_opti_by_step = 1;
-    unsigned int total_steps = 1;
+    unsigned int total_steps = 4;
 
-    bool useNormalAlignment = false;
+    bool useNormalAlignment = true;
     bool use_triangle_area_constraints = true;
 
     std::vector< mat33d > tetrahedron_rotation_matrix;
@@ -681,6 +681,8 @@ public slots:
 
                 std::cout << "\t finished computing the normal L1 norm Hessian and gradient" << std::endl;
 
+                //Eigen::SparseMatrix<double> alignementHessianSparse(3*mesh.vertices.size(), 3*mesh.vertices.size());
+                MySparseMatrix alignementHessian( 3*mesh.vertices.size() , 3*mesh.vertices.size() );
                 if (useNormalAlignment){
                     // Compute the Aeij (for the normal alignment gradient)
                     Eigen::VectorXd edgeWeights(edges.size());  // A(eij,X)
@@ -786,7 +788,7 @@ public slots:
 
 
                     for (unsigned int i=0; i<3*mesh.vertices.size(); i++) {
-                        polycubeHessian(i,i) += 1;
+                        alignementHessian(i,i) += 1;
                     }
 
                     std::cout << "\t finished computing the normal alignement gradient" << std::endl;
@@ -802,7 +804,7 @@ public slots:
                         Eigen::VectorXd RHSsystem( 3*mesh.vertices.size() + mesh.triangles.size() );
                         for( unsigned int coord = 0 ; coord < 3*mesh.vertices.size() ; ++coord ) RHSsystem[coord] = - gradient[coord];
 
-                        // set energy Hessian to 2*A + alpha*polycubeHessian:
+                        // set energy Hessian to 2*A + alpha*polycubeHessian + beta*alignementHessian:
                         for( unsigned int r = 0 ; r < 3*mesh.vertices.size() ; ++r ) {
                             std::map< unsigned int , double > const & row_r = A_mine.getRow(r);
                             for( std::map< unsigned int , double >::const_iterator it = row_r.begin() ; it != row_r.end() ; ++it ) {
@@ -819,6 +821,15 @@ public slots:
                                 LHSsystem_mine( r , c ) += alpha * val_rc;
                             }
                         }
+                        for( unsigned int r = 0 ; r < 3*mesh.vertices.size() ; ++r ) {
+                            std::map< unsigned int , double > const & row_r = alignementHessian.getRow(r);
+                            for( std::map< unsigned int , double >::const_iterator it = row_r.begin() ; it != row_r.end() ; ++it ) {
+                                unsigned int c = it->first;
+                                double val_rc = it->second;
+                                LHSsystem_mine( r , c ) += beta * val_rc;
+                            }
+                        }
+
 
                         // compute Jacobian of the constraints, and set appropriate values:
                         for( unsigned int t = 0 ; t < mesh.triangles.size() ; ++t ) {
