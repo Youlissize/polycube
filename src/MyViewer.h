@@ -104,6 +104,9 @@ class MyViewer : public QGLViewer , public QOpenGLFunctions_3_0
     bool useNormalAlignment = true;
     bool use_triangle_area_constraints = true;
 
+    bool useStepLimiter = true;
+    float maxStepDistance = 1.f;
+
     std::vector< mat33d > tetrahedron_rotation_matrix;
 
     double meshLength;
@@ -969,9 +972,14 @@ public slots:
             // Update Positions
             for( unsigned int v = 0 ; v < mesh.vertices.size() ; ++v ) {
                 point3d & p = mesh.vertices[ v ].p;
-                p[0] = pb(3*v);
-                p[1] = pb(3*v+1);
-                p[2] = pb(3*v+2);
+                point3d target = point3d(pb(3*v), pb(3*v+1), pb(3*v+2));
+                double distance =(target-p).norm();
+                if(useStepLimiter && distance > maxStepDistance) {
+                    target = maxStepDistance * (target-p) / distance + p;
+                }
+                p[0] = target[0];
+                p[1] = target[1];
+                p[2] = target[2];
             }
         }
 
