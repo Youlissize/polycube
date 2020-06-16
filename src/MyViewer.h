@@ -103,11 +103,13 @@ class MyViewer : public QGLViewer , public QOpenGLFunctions_3_0
     unsigned int rotation_opti_by_step = 1;
     unsigned int total_steps = 4;
 
-    bool useNormalAlignment = false;
+    bool useNormalAlignment = true;
     bool use_triangle_area_constraints = true;
 
     bool useStepLimiter = true;
     float maxStepDistance = 2.f;
+
+    bool postProcessWork = false;
 
     std::vector< mat33d > tetrahedron_rotation_matrix;
 
@@ -989,7 +991,52 @@ public slots:
         if( increase_alpha )
             alpha *= 1.1;
         if (decrease_epsilon){
-            epsilon *= 0.9;
+            epsilon *= 0.95;
+        }
+
+        // Clean the result and extract an hexaedrale mesh
+        if(postProcessWork){
+
+            std::vector<unsigned int> orientation = std::vector<unsigned int>();
+            
+            for (unsigned int t=0; t<mesh.triangles.size(); t++) {
+                int i0 = mesh.triangles[t][0];
+                int i1 = mesh.triangles[t][1];
+                int i2 = mesh.triangles[t][2];
+                std::vector<int> indexes = {3*i0, 3*i0+1, 3*i0+2, 3*i1, 3*i1+1, 3*i1+2, 3*i2, 3*i2+1, 3*i2+2}; // x0, y0, z0 , x1, y1, z1, x2, y2, z2
+                point3d p0 = mesh.vertices[i0].p;
+                point3d p1 = mesh.vertices[i1].p;
+                point3d p2 = mesh.vertices[i2].p;
+                point3d n = point3d::cross( p1-p0 , p2-p0 );
+                n.normalize();
+
+                if(fabs(n.x())>0.5){
+                    if(n.x()>0){
+                        orientation[t]=0;
+                    }
+                    else{
+                        orientation[t]=1;
+                    }
+                }
+                else if(fabs(n.y())>0.5){
+                    if(n.y()>0){
+                        orientation[t]=2;
+                    }
+                    else{
+                        orientation[t]=3;
+                    }
+                }
+                else{
+                    if(n.z()>0){
+                        orientation[t]=4;
+                    }
+                    else{
+                        orientation[t]=5;
+                    }
+                }
+
+                
+            }
         }
 
         update();
