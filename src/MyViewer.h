@@ -472,7 +472,7 @@ public slots:
 
 
 
-        for(int alphait = 0; alphait < total_steps; alphait++) {  // Main loop
+        for(unsigned int alphait = 0; alphait < total_steps; alphait++) {  // Main loop
             std::cout << alphait*100/total_steps << "%" << std::endl;
             std::cout << "Alpha = "<<alpha<<" , Epsilon = "<<epsilon<<std::endl;
             if(increase_alpha && alphait != 0 && alphait % step_by_alpha_increase == 0) {
@@ -999,9 +999,8 @@ public slots:
         // Clean the result and extract an hexaedrale mesh
         if(postProcessWork) {
 
-            std::vector<int> orientation = std::vector<int>();
-            
             // Compute orientation of each triangle
+            std::vector<int> orientation = std::vector<int>(mesh.triangles.size(),0);
             for (unsigned int t=0; t<mesh.triangles.size(); t++) {
                 int i0 = mesh.triangles[t][0];
                 int i1 = mesh.triangles[t][1];
@@ -1055,12 +1054,25 @@ public slots:
 
             // Relabelling some triangles
             for (unsigned int t=0; t<mesh.triangles.size(); t++) {
-                //TODO
+                if(triangleNeighboors[t].size()==3){
+                    int o1 = orientation[triangleNeighboors[t][0]];
+                    int o2 = orientation[triangleNeighboors[t][1]];
+                    int o3 = orientation[triangleNeighboors[t][2]];
+                    if(o1==o2 && orientation[t]==o3){
+                        orientation[t] = o1;
+                    }
+                    if(o1==o3 && orientation[t]==o2){
+                        orientation[t] = o1;
+                    }
+                    if(o3==o2 && orientation[t]==o1){
+                        orientation[t] = o3;
+                    }
+                }
             }
 
             //Find Patches, and their neighboors
             std::vector<std::vector<unsigned int>> patches = std::vector<std::vector<unsigned int>>();
-            std::vector<std::set<unsigned int>> patchesNieghboors = std::vector<std::set<unsigned int>>();
+            std::vector<std::set<int>> patchesNieghboors = std::vector<std::set<int>>(); //only store the neighboor's orientation
             std::vector<bool> visitedTriangles = std::vector<bool>(mesh.triangles.size(),false);
             unsigned int ind;
             int nb_patches = 0;
@@ -1099,12 +1111,26 @@ public slots:
 
                 }
 
-
-
-
             }
 
             //Clean Patches issues
+            for(unsigned int p=0; p<patches.size(); p++) {
+                if(patchesNieghboors[p].size()==1){
+                    int new_orientation = *patchesNieghboors[p].begin();
+                    for(unsigned int i=0; i<patches[p].size(); i++){
+                        orientation[patches[p][i]]= new_orientation;
+                    }
+                }
+            }
+            for(unsigned int p=0; p<patches.size(); p++) {
+                if(patchesNieghboors[p].size()==2){
+                    // should take the longuest border to choose the new orientation
+                    int new_orientation = *patchesNieghboors[p].begin();
+                    for(unsigned int i=0; i<patches[p].size(); i++){
+                        orientation[patches[p][i]]= new_orientation;
+                    }
+                }
+            }
 
 
 
