@@ -38,6 +38,8 @@
 #include "extern/eigen3/Eigen/Dense"
 #include "extern/eigen3/Eigen/SVD"
 
+#include <set>
+
 class MySparseMatrix {
     std::vector< std::map< unsigned int , double > > _ASparse;
 
@@ -995,10 +997,11 @@ public slots:
         }
 
         // Clean the result and extract an hexaedrale mesh
-        if(postProcessWork){
+        if(postProcessWork) {
 
-            std::vector<unsigned int> orientation = std::vector<unsigned int>();
+            std::vector<int> orientation = std::vector<int>();
             
+            // Compute orientation of each triangle
             for (unsigned int t=0; t<mesh.triangles.size(); t++) {
                 int i0 = mesh.triangles[t][0];
                 int i1 = mesh.triangles[t][1];
@@ -1010,12 +1013,13 @@ public slots:
                 point3d n = point3d::cross( p1-p0 , p2-p0 );
                 n.normalize();
 
+                // 1,2,3 = X,Y,Z , et + ou - selon la direction
                 if(fabs(n.x())>0.5){
                     if(n.x()>0){
-                        orientation[t]=0;
+                        orientation[t]=1;
                     }
                     else{
-                        orientation[t]=1;
+                        orientation[t]=-1;
                     }
                 }
                 else if(fabs(n.y())>0.5){
@@ -1023,20 +1027,87 @@ public slots:
                         orientation[t]=2;
                     }
                     else{
-                        orientation[t]=3;
+                        orientation[t]=-2;
                     }
                 }
                 else{
                     if(n.z()>0){
-                        orientation[t]=4;
+                        orientation[t]=3;
                     }
                     else{
-                        orientation[t]=5;
+                        orientation[t]=-3;
                     }
                 }
-
-                
             }
+
+            // Check orientation validity and fill triangleNeighboors
+            std::vector<std::vector<unsigned int>> triangleNeighboors = std::vector<std::vector<unsigned int>>(mesh.triangles.size(),std::vector<unsigned int>());
+            for (auto it=edges.begin(); it !=edges.end(); it++) {
+
+                int ti = it->second.first;
+                int tj = it->second.second;
+                if(orientation[ti]+orientation[tj]==0){
+                    std::cout<<"\tWarning : Triangles "<<ti<<" and "<<tj<<" have opposite orientation"<<std::endl;
+                }
+                triangleNeighboors[ti].push_back(tj);
+                triangleNeighboors[tj].push_back(ti);
+            }
+
+            // Relabelling some triangles
+            for (unsigned int t=0; t<mesh.triangles.size(); t++) {
+                //TODO
+            }
+
+            //Find Patches, and their neighboors
+            std::vector<std::vector<unsigned int>> patches = std::vector<std::vector<unsigned int>>();
+            std::vector<std::set<unsigned int>> patchesNieghboors = std::vector<std::set<unsigned int>>();
+            std::vector<bool> visitedTriangles = std::vector<bool>(mesh.triangles.size(),false);
+            unsigned int ind;
+            int nb_patches = 0;
+            while(ind<mesh.triangles.size()) {
+                if (visitedTriangles[ind]){
+                    ind++;
+                }
+                else{ // we have found a triangle from another patch
+                    nb_patches ++;
+                    int current_orientation = orientation[ind];
+                    patches.push_back(std::vector<unsigned int>());
+                    patches[nb_patches].push_back(ind);
+
+                    //BFS to find all patch triangles
+                    std::vector<int> stack = std::vector<int>();
+                    stack.push_back(ind);
+                    while(stack.size()>0) {
+                        int t = stack[stack.size()-1];
+                        stack.pop_back();
+
+                        if(not(visitedTriangles[t])){
+                            visitedTriangles[t]=true;
+                            for(int k=0; k<triangleNeighboors[t].size();k ++){
+                                int neigh = triangleNeighboors[t][k];
+                                if(orientation[neigh]==current_orientation){
+                                    stack.push_back(neigh);
+                                    patches[nb_patches].push_back(neigh);
+                                }
+                                else{ //we found an edge
+                                    patchesNieghboors[nb_patches].insert(orientation[neigh]);
+                                }
+                            }
+                        }
+                    } //BFS end
+                    nb_patches++;
+
+                }
+
+
+
+
+            }
+
+            //Clean Patches issues
+
+
+
         }
 
         update();
