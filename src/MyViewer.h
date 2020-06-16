@@ -88,12 +88,14 @@ class MyViewer : public QGLViewer , public QOpenGLFunctions_3_0
 
     Mesh mesh;
 
-    float alphaInit = 0.03f;
+    float alphaInit = 0.05f;
     float alpha = alphaInit;
     float beta = 0.02f; // for shape complexity
     float h = 0.001f; // only for gradient descent
-    float epsilon = 0.6;
+    float epsilonInit = 0.6f;
+    float epsilon = epsilonInit;
 
+    bool decrease_epsilon = true;
 
     bool increase_alpha = false;
     unsigned int step_by_alpha_increase = 50;
@@ -101,11 +103,11 @@ class MyViewer : public QGLViewer , public QOpenGLFunctions_3_0
     unsigned int rotation_opti_by_step = 1;
     unsigned int total_steps = 4;
 
-    bool useNormalAlignment = true;
+    bool useNormalAlignment = false;
     bool use_triangle_area_constraints = true;
 
     bool useStepLimiter = true;
-    float maxStepDistance = 1.f;
+    float maxStepDistance = 2.f;
 
     std::vector< mat33d > tetrahedron_rotation_matrix;
 
@@ -468,6 +470,7 @@ public slots:
 
         for(int alphait = 0; alphait < total_steps; alphait++) {  // Main loop
             std::cout << alphait*100/total_steps << "%" << std::endl;
+            std::cout << "Alpha = "<<alpha<<" , Epsilon = "<<epsilon<<std::endl;
             if(increase_alpha && alphait != 0 && alphait % step_by_alpha_increase == 0) {
                 alpha = alpha * 2;
                 /*if (epsilon > 0.01f)
@@ -984,7 +987,10 @@ public slots:
         }
 
         if( increase_alpha )
-            alpha *= 1.4;
+            alpha *= 1.1;
+        if (decrease_epsilon){
+            epsilon *= 0.9;
+        }
 
         update();
     }
