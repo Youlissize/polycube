@@ -111,13 +111,17 @@ class MyViewer : public QGLViewer , public QOpenGLFunctions_3_0
     bool useStepLimiter = true;
     float maxStepDistance = 2.f;
 
-    bool postProcessWork = false;
+    bool postProcessWork = true;
 
     std::vector< mat33d > tetrahedron_rotation_matrix;
 
     double meshLength;
 
     QWidget * controls;
+
+    std::vector<int> orientation = std::vector<int>();
+    bool displayOrientation = false; //Shows axis-aligned normals patches found
+    bool isOrientationComputed = false;
 
 public :
 
@@ -136,6 +140,8 @@ public :
         DetailedAction * openCamera = new DetailedAction( QIcon(fullpath+"/icons/open_camera.png") , "Open camera" , "Open camera" , this , this , SLOT(openCamera()) );
         DetailedAction * saveSnapShotPlusPlus = new DetailedAction( QIcon(fullpath+"/icons/save_snapshot.png") , "Save snapshot" , "Save snapshot" , this , this , SLOT(saveSnapShotPlusPlus()) );
         DetailedAction * work = new DetailedAction( QIcon(fullpath+"/icons/work.png") , "Work" , "Work" , this , this , SLOT(work()) );
+        DetailedAction * showPatches = new DetailedAction( QIcon(fullpath+"/icons/work.png") , "showPatches" , "showPatches" , this , this , SLOT(showPatches()) );
+
 
         // Add them :
         toolBar->addAction( open_mesh );
@@ -145,6 +151,8 @@ public :
         toolBar->addAction( openCamera );
         toolBar->addAction( saveSnapShotPlusPlus );
         toolBar->addAction( work );
+        toolBar->addAction( showPatches );
+
     }
 
 
@@ -161,7 +169,23 @@ public :
             point3d const & p2 = mesh.vertices[ mesh.triangles[t][2] ].p;
             point3d const & n = - point3d::cross( p1-p0 , p2-p0 ).direction();
             //glNormal3f(n[0],n[1],n[2]);
-            glColor3f(fabs(n[0]),fabs(n[1]),fabs(n[2]));
+
+            if(displayOrientation){
+                if(isOrientationComputed){
+                    if(abs(orientation[t])==1){
+                        glColor3f(1,0,0);
+                    }
+                    else if(abs(orientation[t])==2){
+                        glColor3f(0,1,0);
+                    }
+                    else if(abs(orientation[t])==3){
+                        glColor3f(0,0,1);
+                    }
+                }
+                else{glColor3f(fabs(n[0]),fabs(n[1]),fabs(n[2]));}
+            }
+            else{glColor3f(fabs(n[0]),fabs(n[1]),fabs(n[2]));}
+            //glColor3f(fabs(n[0]),fabs(n[1]),fabs(n[2]));
             glVertex3f(p0[0],p0[1],p0[2]);
             glVertex3f(p1[0],p1[1],p1[2]);
             glVertex3f(p2[0],p2[1],p2[2]);
@@ -1003,7 +1027,7 @@ public slots:
         if(postProcessWork) {
 
             // Compute orientation of each triangle
-            std::vector<int> orientation = std::vector<int>(mesh.triangles.size(),0);
+            orientation = std::vector<int>(mesh.triangles.size(),0);
             for (unsigned int t=0; t<mesh.triangles.size(); t++) {
                 int i0 = mesh.triangles[t][0];
                 int i1 = mesh.triangles[t][1];
@@ -1014,46 +1038,24 @@ public slots:
                 point3d p2 = mesh.vertices[i2].p;
                 point3d n = point3d::cross( p1-p0 , p2-p0 );
                 n.normalize();
-
+                orientation[t] = closestOrientation(n);
                 // 1,2,3 = X,Y,Z , et + ou - selon la direction
-                if(fabs(n.x())>0.5){
-                    if(n.x()>0){
-                        orientation[t]=1;
-                    }
-                    else{
-                        orientation[t]=-1;
-                    }
-                }
-                else if(fabs(n.y())>0.5){
-                    if(n.y()>0){
-                        orientation[t]=2;
-                    }
-                    else{
-                        orientation[t]=-2;
-                    }
-                }
-                else{
-                    if(n.z()>0){
-                        orientation[t]=3;
-                    }
-                    else{
-                        orientation[t]=-3;
-                    }
-                }
             }
 
             // Check orientation validity and fill triangleNeighboors
+            int nb_oppositeTriangles =0;
             std::vector<std::vector<unsigned int>> triangleNeighboors = std::vector<std::vector<unsigned int>>(mesh.triangles.size(),std::vector<unsigned int>());
             for (auto it=edges.begin(); it !=edges.end(); it++) {
 
                 int ti = it->second.first;
                 int tj = it->second.second;
                 if(orientation[ti]+orientation[tj]==0){
-                    std::cout<<"\tWarning : Triangles "<<ti<<" and "<<tj<<" have opposite orientation"<<std::endl;
+                    nb_oppositeTriangles ++;
                 }
                 triangleNeighboors[ti].push_back(tj);
                 triangleNeighboors[tj].push_back(ti);
             }
+            std::cout<<"\tNumbers of triangles with opposite direction found : "<<nb_oppositeTriangles<<std::endl;
 
             // Relabelling some triangles
             for (unsigned int t=0; t<mesh.triangles.size(); t++) {
@@ -1072,12 +1074,12 @@ public slots:
                     }
                 }
             }
-
+            /*
             //Find Patches, and their neighboors
             std::vector<std::vector<unsigned int>> patches = std::vector<std::vector<unsigned int>>();
             std::vector<std::set<int>> patchesNieghboors = std::vector<std::set<int>>(); //only store the neighboor's orientation
             std::vector<bool> visitedTriangles = std::vector<bool>(mesh.triangles.size(),false);
-            unsigned int ind;
+            unsigned int ind = 0;
             int nb_patches = 0;
             while(ind<mesh.triangles.size()) {
                 if (visitedTriangles[ind]){
@@ -1110,7 +1112,7 @@ public slots:
                             }
                         }
                     } //BFS end
-                    nb_patches++;
+                    //nb_patches++;
 
                 }
 
@@ -1134,13 +1136,62 @@ public slots:
                     }
                 }
             }
-
+            std::cout<<"\tNumber of patches found : "<<nb_patches<<std::endl;
+            */
+            isOrientationComputed = true;
 
 
         }
 
         update();
     }
+
+    void showPatches(){
+        displayOrientation = not(displayOrientation);
+        update();
+    }
+
+    int closestOrientation(point3d n){
+        float nx = fabs(n.x());
+        float ny = fabs(n.y());
+        float nz = fabs(n.z());
+
+        if(nx>ny){
+            if(nx>nz){
+                if(n.x()>0){
+                    return 1;
+                }
+                else{
+                    return -1;
+                }
+            }
+            else{
+                if(n.z()>0){
+                    return 3;
+                }
+                else{
+                    return -3;
+                }
+            }
+        }
+        else if (ny>nz){
+            if(n.y()>0){
+                return 2;
+            }
+            else{
+                return -2;
+            }
+        }
+        else {
+            if(n.z()>0){
+                return 3;
+            }
+            else{
+                return -3;
+            }
+        }
+    }
+
 };
 
 #endif // MYVIEWER_H
