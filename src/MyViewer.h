@@ -682,6 +682,25 @@ public slots:
                     H_small(6,4) += -c2/c2b;
                     H_small(4,6) += -c2/c2b;
 
+                    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(H_small);
+                    Eigen::VectorXd D = es.eigenvalues();
+                    Eigen::MatrixXd Q = es.eigenvectors();
+                    for(int i = 0; i < 9; i++) {
+                        if(D(i) < 0)
+                            D(i) = 0.0001;
+                    }
+                    H_small = Q * D.asDiagonal() * Q.transpose();
+
+                   /* Eigen::JacobiSVD<Eigen::MatrixXd> svd(H_small,  Eigen::ComputeFullU | Eigen::ComputeFullV);
+                    Eigen::MatrixXd U = svd.matrixU();
+                    Eigen::MatrixXd V = svd.matrixV();
+                    Eigen::VectorXd S = svd.singularValues();
+                    for(int i = 0; i < 9; i++) {
+                        if(S(i) < 0)
+                            S(i) = 0.000001;
+                    }
+                    H_small = U * S.asDiagonal() * U.transpose();*/
+
                     for(int i = 0; i < 9; ++i) {
                         for(int j = 0; j < 9; ++j) {
                             polycubeHessian(indexes[i],indexes[j]) += meshLength * H_small(i,j);
